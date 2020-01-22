@@ -1,0 +1,15 @@
+[package]
+name = "rust_wallet"
+version = "0.1.0"
+authors = ["kuba"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+secp256k1 = "0.17.2"
+sha2 = "0.8.1"
+ripemd160 = "0.8.0"
+hmac = "0.7.1"
+rand = "0.7.3"
+bech32 = "0.7.2"
