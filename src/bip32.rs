@@ -26,3 +26,26 @@ pub fn ckd_priv(k_par: &[u8], c_par: &[u8], i: u32) -> (Box<[u8]>, Box<[u8]>) {
         i_r.to_owned().into_boxed_slice(),
     )
 }
+
+pub fn ckd_pub(kk_par: &[u8], c_par: &[u8], i: u32) -> (Box<[u8]>, Box<[u8]>) {
+    let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
+    let ctx = Secp256k1::new();
+    if i >= 1 << 31 {
+        panic!("not possible");
+    } else {
+        mac.input(kk_par);
+    }
+    mac.input(&i.to_be_bytes());
+    let result = mac.result().code();
+    let i_l = &result[0..32];
+    let i_r = &result[32..];
+
+    let i_l_pub = PublicKey::from_secret_key(&ctx, &SecretKey::from_slice(i_l).unwrap());
+    let kk_child = i_l_pub.combine(&PublicKey::from_slice(kk_par).unwrap())
+        .unwrap()
+        .serialize();
+    (
+        kk_child[..].to_owned().into_boxed_slice(),
+        i_r.to_owned().into_boxed_slice(),
+    )
+}
