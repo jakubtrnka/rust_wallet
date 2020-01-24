@@ -1,13 +1,13 @@
 use std::iter::FromIterator;
-use std::ops::Index;
+
+const ABC: [char; 58] = [
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+    'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e',
+    'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
+    'z',
+];
 
 pub fn bytes_to_base58(bytes: &[u8]) -> String {
-    const ABC: [char; 58] = [
-        '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J',
-        'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c',
-        'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-        'w', 'x', 'y', 'z',
-    ];
     let mut output = Vec::<u32>::with_capacity(bytes.len() * 2);
     for byte in bytes.iter() {
         let mut carry: u16 = *byte as u16;
@@ -24,13 +24,7 @@ pub fn bytes_to_base58(bytes: &[u8]) -> String {
     String::from_iter(output.iter().rev().map(|c| ABC[*c as usize]))
 }
 
-pub fn base58_to_bytes(code: &String) -> Result<Vec<u8>, &'static str> {
-    const ABC: [char; 58] = [
-        '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J',
-        'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c',
-        'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-        'w', 'x', 'y', 'z',
-    ];
+pub fn base58_to_bytes(code: &str) -> Result<Vec<u8>, &'static str> {
     if !code.is_ascii() {
         return Err("Non-ascii characters");
     }
@@ -39,7 +33,6 @@ pub fn base58_to_bytes(code: &String) -> Result<Vec<u8>, &'static str> {
         .map(|c| ABC.iter().position(|i| *i == c))
         .collect::<Vec<Option<usize>>>();
 
-    //////////////////////////////
     let mut output = Vec::<u32>::with_capacity(digits.len());
     for &opt_word in digits.iter() {
         match opt_word {
@@ -58,7 +51,7 @@ pub fn base58_to_bytes(code: &String) -> Result<Vec<u8>, &'static str> {
             }
         }
     }
-    return Ok(output.iter().rev().map(|c| *c as u8).collect());
+    Ok(output.iter().rev().map(|c| *c as u8).collect())
 }
 
 #[cfg(test)]

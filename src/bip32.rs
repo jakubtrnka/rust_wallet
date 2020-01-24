@@ -1,6 +1,6 @@
 use hmac::{Hmac, Mac};
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
-use sha2::{Sha256, Sha512};
+use sha2::Sha512;
 
 pub fn ckd_priv(k_par: &[u8; 32], c_par: &[u8; 32], i: u32) -> ([u8; 32], [u8; 32]) {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
@@ -57,12 +57,12 @@ pub fn hd_wallet_secret(enthropy: &[u8], path: &[u32]) -> [u8; 45] {
     fn recursion(k_par: [u8; 32], c_par: [u8; 32], i: &[u32]) -> ([u8; 32], [u8; 32]) {
         let (k_child, c_child) = ckd_priv(&k_par, &c_par, i[0]);
         if i.len() == 1 {
-            return (k_child, c_child);
+            (k_child, c_child)
         } else {
-            return recursion(k_child, c_child, &i[1..]);
+            recursion(k_child, c_child, &i[1..])
         }
     }
-    let mut mac = Hmac::<Sha512>::new_varkey("Bitcoin seed".as_bytes()).unwrap();
+    let mut mac = Hmac::<Sha512>::new_varkey(b"Bitcoin seed").unwrap();
     mac.input(enthropy);
     let result = mac.result().code();
     let mut key = [0u8; 32];

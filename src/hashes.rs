@@ -1,6 +1,6 @@
 use ripemd160;
 use ripemd160::Ripemd160;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 
 pub fn sha256d(data: &[u8]) -> [u8; 32] {
     let mut output = [0; 32];
