@@ -1,5 +1,4 @@
-mod base58;
-mod bip32;
+use rust_wallet::bip32;
 
 fn main() {
     let seed = [

@@ -1,8 +1,6 @@
 use hmac::{Hmac, Mac};
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 use sha2::{Sha256, Sha512};
-use ripemd160;
-use ripemd160::Ripemd160;
 
 pub fn ckd_priv(k_par: &[u8; 32], c_par: &[u8; 32], i: u32) -> ([u8; 32], [u8; 32]) {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
@@ -74,13 +72,14 @@ pub fn hd_wallet_secret(enthropy: &[u8], path: &[u32]) -> [u8; 45] {
     let (private_key, chain_code) = recursion(key, chain_code, path);
 //    let mut serialized = Vec::<u8>::with_capacity(45);
 //    serialized.append
-    let x = [
-        [0x04, 0x88, 0xAD, 0xE4],
-        [path.len() as u8],
-        []
-    ];
-    let mut output: [u8; 45] = [0; 45];
-    let xx = Ripemd160::<ripemd160::Digest>::new();
-    println!("{:?}", xx);
-    output
+//    let x = [
+//        [0x04, 0x88, 0xAD, 0xE4],
+//        [path.len() as u8],
+//        []
+//    ];
+//    let mut output: [u8; 45] = [0; 45];
+//    let xx = Ripemd160::<ripemd160::Digest>::new();
+//    println!("{:?}", xx);
+//    output
+    unimplemented!();
 }
