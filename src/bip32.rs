@@ -70,16 +70,16 @@ pub fn hd_wallet_secret(enthropy: &[u8], path: &[u32]) -> [u8; 45] {
     let mut chain_code = [0u8; 32];
     chain_code.copy_from_slice(&result[32..]);
     let (private_key, chain_code) = recursion(key, chain_code, path);
-//    let mut serialized = Vec::<u8>::with_capacity(45);
-//    serialized.append
-//    let x = [
-//        [0x04, 0x88, 0xAD, 0xE4],
-//        [path.len() as u8],
-//        []
-//    ];
-//    let mut output: [u8; 45] = [0; 45];
-//    let xx = Ripemd160::<ripemd160::Digest>::new();
-//    println!("{:?}", xx);
-//    output
+    //    let mut serialized = Vec::<u8>::with_capacity(45);
+    //    serialized.append
+    //    let x = [
+    //        [0x04, 0x88, 0xAD, 0xE4],
+    //        [path.len() as u8],
+    //        []
+    //    ];
+    //    let mut output: [u8; 45] = [0; 45];
+    //    let xx = Ripemd160::<ripemd160::Digest>::new();
+    //    println!("{:?}", xx);
+    //    output
     unimplemented!();
 }
