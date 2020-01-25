@@ -1,9 +1,13 @@
+use crate::base58::base58_to_bytes;
 use hmac::{Hmac, Mac};
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 use sha2::Sha512;
+use std::error::Error;
 
-const MAINNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x88, 0xAD, 0xE4];
-const MAINNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xB2, 0x1E];
+const MAINNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x88, 0xad, 0xe4];
+const MAINNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
+const TESTNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
+const TESTNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x35, 0x87, 0xcf];
 
 fn copy_to_offset(target: &mut [u8], mut offset: usize, source: &[u8]) {
     for element in source {
@@ -16,105 +20,189 @@ fn copy_to_offset(target: &mut [u8], mut offset: usize, source: &[u8]) {
     }
 }
 
-pub fn ckd_priv(k_par: &[u8; 32], c_par: &[u8; 32], i: u32) -> ([u8; 32], [u8; 32]) {
+fn ckd(
+    k_par: &KeyBytes,
+    c_par: &[u8; 32],
+    index: u32,
+) -> Result<(KeyBytes, [u8; 32]), Box<dyn Error>> {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
-    let ctx = Secp256k1::new();
-    if i >= 0x80000000 {
-        mac.input(&[0u8]);
-        mac.input(k_par);
+    if index >= 0x80000000 {
+        mac.input(&k_par.as_33_bytes());
     } else {
-        let secr_key = SecretKey::from_slice(k_par).unwrap();
-        let pub_key = PublicKey::from_secret_key(&ctx, &secr_key);
-        mac.input(&pub_key.serialize());
+        mac.input(&k_par.as_public_bytes());
     }
-    mac.input(&i.to_be_bytes());
+    mac.input(&index.to_be_bytes());
     let result = mac.result().code();
-    let i_l = &result[0..32];
+    let mut i_l = [0u8; 32];
     let mut i_r = [0u8; 32];
+    i_l.copy_from_slice(&result[0..32]);
     i_r.copy_from_slice(&result[32..]);
 
-    let mut k_child_secr = SecretKey::from_slice(i_l).unwrap();
-    k_child_secr.add_assign(k_par).unwrap();
-    let mut k_child = [0u8; 32];
-    k_child.copy_from_slice(&k_child_secr[..]);
-
-    (k_child, i_r)
+    let child_key = KeyBytes::Private(i_l).ec_or_scalar_add(k_par)?;
+    Ok((child_key, i_r))
 }
 
-pub fn ckd_pub(kk_par: &[u8; 33], c_par: &[u8; 32], i: u32) -> ([u8; 33], [u8; 32]) {
-    let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
-    let ctx = Secp256k1::new();
-    if i >= 1 << 31 {
-        panic!("not possible");
-    } else {
-        mac.input(kk_par);
-    }
-    mac.input(&i.to_be_bytes());
-    let result = mac.result().code();
-    let i_l = &result[0..32];
-    let mut i_r = [0u8; 32];
-    i_r.copy_from_slice(&result[32..]);
-
-    let i_l_pub = PublicKey::from_secret_key(&ctx, &SecretKey::from_slice(i_l).unwrap());
-    let kk_child = i_l_pub
-        .combine(&PublicKey::from_slice(kk_par).unwrap())
-        .unwrap()
-        .serialize();
-    (kk_child, i_r)
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+enum KeyType {
+    MainnetPrivate,
+    MainnetPublic,
+    TestnetPrivate,
+    TestnetPublic,
 }
 
-pub fn hd_wallet_public(enthropy: &[u8], path: &[u32]) -> [u8; 33] {
-    unimplemented!()
+#[derive(Clone)]
+enum KeyBytes {
+    Public([u8; 33]),
+    Private([u8; 32]),
 }
 
-pub fn hd_wallet_secret(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
-    fn recursion(
-        k_par: [u8; 32],
-        c_par: [u8; 32],
-        key_index: &[u32],
-    ) -> ([u8; 32], [u8; 32], [u8; 20]) {
-        let (k_child, c_child) = ckd_priv(&k_par, &c_par, key_index[0]);
-        if key_index.len() == 1 {
-            let ctx = Secp256k1::new();
-            let pub_k_par =
-                PublicKey::from_secret_key(&ctx, &SecretKey::from_slice(&k_par).unwrap());
-            (
-                k_child,
-                c_child,
-                crate::hashes::hash160(&pub_k_par.serialize()),
-            )
-        } else {
-            recursion(k_child, c_child, &key_index[1..])
+impl KeyBytes {
+    fn as_public_bytes(&self) -> [u8; 33] {
+        match self {
+            Self::Public(x) => *x,
+            Self::Private(x) => {
+                let ctx = Secp256k1::new();
+                PublicKey::from_secret_key(&ctx, &SecretKey::from_slice(x).unwrap()).serialize()
+            }
         }
     }
+
+    fn as_public(&self) -> Self {
+        Self::Public(self.as_public_bytes())
+    }
+
+    fn ec_or_scalar_add(&self, other: &Self) -> Result<Self, Box<dyn Error>> {
+        let ctx = Secp256k1::new();
+        let add_op = |priv_tmp: &[u8; 32], pub_tmp: &[u8; 33]| {
+            let lhs_point = PublicKey::from_slice(pub_tmp)?;
+            let pub_rhs_pub = PublicKey::from_secret_key(&ctx, &SecretKey::from_slice(priv_tmp)?);
+            Ok(Self::Public(lhs_point.combine(&pub_rhs_pub)?.serialize()))
+        };
+        match (self, other) {
+            (Self::Public(pub_lhs), Self::Public(pub_rhs)) => {
+                let lhs_point = PublicKey::from_slice(pub_lhs)?;
+                let rhs_point = PublicKey::from_slice(pub_rhs)?;
+                let output = lhs_point.combine(&rhs_point)?;
+                Ok(Self::Public(output.serialize()))
+            }
+            (Self::Private(priv_lhs), Self::Private(priv_rhs)) => {
+                let mut lhs_num = SecretKey::from_slice(priv_lhs)?;
+                lhs_num.add_assign(priv_rhs)?;
+                let mut combined = [0u8; 32];
+                combined.copy_from_slice(&lhs_num[..]);
+                Ok(Self::Private(combined))
+            }
+            (Self::Public(pub_tmp), Self::Private(priv_tmp)) => add_op(priv_tmp, pub_tmp),
+            (Self::Private(priv_tmp), Self::Public(pub_tmp)) => add_op(priv_tmp, pub_tmp),
+        }
+    }
+
+    fn as_33_bytes(&self) -> [u8; 33] {
+        match self {
+            Self::Private(private_key) => {
+                let mut output = [0; 33];
+                copy_to_offset(&mut output, 1, private_key);
+                output
+            }
+            Self::Public(public_key) => {
+                public_key.clone()
+            }
+        }
+    }
+
+    fn public_identifier(&self) -> [u8; 20] {
+        crate::hashes::hash160(&self.as_public_bytes())
+    }
+}
+
+#[derive(Clone)]
+struct RawExtendedKey {
+    key_type: KeyType,
+    depth: u8,
+    parent_fingerprint: [u8; 4],
+    child_number: [u8; 4],
+    chain_code: [u8; 32],
+    main_key: KeyBytes,
+}
+
+impl RawExtendedKey {
+    fn serialize(&self) -> [u8; 82] {
+        let mut output: [u8; 82] = [0; 82];
+        let network_key_magic = match self.key_type {
+            KeyType::MainnetPrivate => MAINNET_PRIVATE_MAGIC,
+            KeyType::MainnetPublic => MAINNET_PUBLIC_MAGIC,
+            KeyType::TestnetPrivate => TESTNET_PRIVATE_MAGIC,
+            KeyType::TestnetPublic => TESTNET_PUBLIC_MAGIC,
+        };
+//        let main_key =
+        copy_to_offset(&mut output, 0, &network_key_magic);
+        copy_to_offset(&mut output, 4, &[self.depth]);
+        copy_to_offset(&mut output, 5, &self.parent_fingerprint);
+        copy_to_offset(&mut output, 9, &self.child_number);
+        copy_to_offset(&mut output, 13, &self.chain_code);
+        copy_to_offset(&mut output, 45, &self.main_key.as_33_bytes());
+        let checksum = crate::hashes::sha256d(&output[0..78]);
+        copy_to_offset(&mut output, 78, &checksum[0..4]);
+        output
+    }
+
+    fn ext_pub(&self) -> Self {
+        let mut output = self.clone();
+        output.main_key = output.main_key.as_public();
+        output
+    }
+
+}
+
+fn raw_tree_expander(input_ext_key: &RawExtendedKey, path: &[u32]) -> RawExtendedKey {
+    fn recursion(
+        k_par: &KeyBytes,
+        c_par: &[u8; 32],
+        derivation_path: &[u32],
+    ) -> (KeyBytes, [u8; 32], [u8; 20]) {
+        let (k_child, c_child) = ckd(k_par, c_par, derivation_path[0]).unwrap();
+        if derivation_path.len() == 1 {
+            (k_child, c_child, k_par.public_identifier())
+        } else {
+            recursion(&k_child, &c_child, &derivation_path[1..])
+        }
+    }
+
+    if path.len() == 0 {
+        input_ext_key.clone()
+    } else {
+        let result = recursion(&input_ext_key.main_key, &input_ext_key.chain_code, path);
+        let mut par_fpr = [0u8; 4];
+        par_fpr.copy_from_slice(&result.2[0..4]);
+        RawExtendedKey {
+            key_type: input_ext_key.key_type.clone(),
+            depth: input_ext_key.depth + path.len() as u8,
+            parent_fingerprint: par_fpr,
+            child_number: path.last().unwrap().to_be_bytes(),
+            chain_code: result.1,
+            main_key: result.0,
+        }
+    }
+}
+pub fn hd_from_seed_secret(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
     let mut mac = Hmac::<Sha512>::new_varkey(b"Bitcoin seed").unwrap();
     mac.input(enthropy);
     let result = mac.result().code();
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&result[..32]);
-    let mut chain_code0 = [0u8; 32];
-    chain_code0.copy_from_slice(&result[32..]);
-    let (private_key, chain_code, parent_id) = if path.len() == 0 {
-        (
-            key,
-            chain_code0,
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        )
-    } else {
-        recursion(key, chain_code0, path)
+    let mut master_key = [0u8; 32];
+    master_key.copy_from_slice(&result[..32]);
+    let mut master_chain_code = [0u8; 32];
+    master_chain_code.copy_from_slice(&result[32..]);
+    let master_raw_ext_key = RawExtendedKey {
+        key_type: KeyType::MainnetPrivate,
+        depth: 0,
+        parent_fingerprint: [0, 0, 0, 0],
+        child_number: [0, 0, 0, 0],
+        chain_code: master_chain_code,
+        main_key: KeyBytes::Private(master_key),
     };
-
-    let mut output: [u8; 82] = [0; 82];
-    copy_to_offset(&mut output, 0, &MAINNET_PRIVATE_MAGIC);
-    copy_to_offset(&mut output, 4, &[path.len() as u8]);
-    copy_to_offset(&mut output, 5, &parent_id[0..4]);
-    copy_to_offset(&mut output, 9, &path.last().unwrap_or(&0).to_be_bytes());
-    copy_to_offset(&mut output, 13, &chain_code);
-    copy_to_offset(&mut output, 45, &[0]);
-    copy_to_offset(&mut output, 46, &private_key);
-    let checksum = crate::hashes::sha256d(&output[0..78]);
-    copy_to_offset(&mut output, 78, &checksum[0..4]);
-    output
+    let final_raw_ext_key = raw_tree_expander(&master_raw_ext_key, path);
+    final_raw_ext_key.serialize()
 }
 
 #[cfg(test)]
@@ -127,7 +215,7 @@ mod test {
 
     #[test]
     fn test_ext_priv0() {
-        let private_key = crate::bip32::hd_wallet_secret(&SEED, &[]);
+        let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
@@ -138,7 +226,7 @@ mod test {
 
     #[test]
     fn test_ext_priv1() {
-        let private_key = crate::bip32::hd_wallet_secret(&SEED, &[0x80000000]);
+        let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
@@ -149,7 +237,7 @@ mod test {
 
     #[test]
     fn test_ext_priv2() {
-        let private_key = crate::bip32::hd_wallet_secret(&SEED, &[0x80000000, 1]);
+        let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
@@ -160,7 +248,7 @@ mod test {
 
     #[test]
     fn test_ext_priv3() {
-        let private_key = crate::bip32::hd_wallet_secret(&SEED, &[0x80000000, 1, 0x80000002]);
+        let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1, 0x80000002]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
@@ -171,7 +259,7 @@ mod test {
 
     #[test]
     fn test_ext_priv4() {
-        let private_key = crate::bip32::hd_wallet_secret(&SEED, &[0x80000000, 1, 0x80000002, 2]);
+        let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1, 0x80000002, 2]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
@@ -183,7 +271,7 @@ mod test {
     #[test]
     fn test_ext_priv5() {
         let private_key =
-            crate::bip32::hd_wallet_secret(&SEED, &[0x80000000, 1, 0x80000002, 2, 1000000000]);
+            crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1, 0x80000002, 2, 1000000000]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
