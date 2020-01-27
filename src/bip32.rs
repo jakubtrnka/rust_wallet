@@ -135,7 +135,6 @@ impl RawExtendedKey {
             KeyType::TestnetPrivate => TESTNET_PRIVATE_MAGIC,
             KeyType::TestnetPublic => TESTNET_PUBLIC_MAGIC,
         };
-//        let main_key =
         copy_to_offset(&mut output, 0, &network_key_magic);
         copy_to_offset(&mut output, 4, &[self.depth]);
         copy_to_offset(&mut output, 5, &self.parent_fingerprint);
@@ -147,62 +146,75 @@ impl RawExtendedKey {
         output
     }
 
-    fn ext_pub(&self) -> Self {
-        let mut output = self.clone();
-        output.main_key = output.main_key.as_public();
-        output
+    fn ext_pub(mut self) -> Self {
+        self.key_type = KeyType::MainnetPublic;
+        self.main_key = self.main_key.as_public();
+        self
     }
 
-}
+    fn raw_tree_expander(&self, path: &[u32]) -> RawExtendedKey {
+        fn recursion(
+            k_par: &KeyBytes,
+            c_par: &[u8; 32],
+            derivation_path: &[u32],
+        ) -> (KeyBytes, [u8; 32], [u8; 20]) {
+            let (k_child, c_child) = ckd(k_par, c_par, derivation_path[0]).unwrap();
+            if derivation_path.len() == 1 {
+                (k_child, c_child, k_par.public_identifier())
+            } else {
+                recursion(&k_child, &c_child, &derivation_path[1..])
+            }
+        }
 
-fn raw_tree_expander(input_ext_key: &RawExtendedKey, path: &[u32]) -> RawExtendedKey {
-    fn recursion(
-        k_par: &KeyBytes,
-        c_par: &[u8; 32],
-        derivation_path: &[u32],
-    ) -> (KeyBytes, [u8; 32], [u8; 20]) {
-        let (k_child, c_child) = ckd(k_par, c_par, derivation_path[0]).unwrap();
-        if derivation_path.len() == 1 {
-            (k_child, c_child, k_par.public_identifier())
+        if path.len() == 0 {
+            self.clone()
         } else {
-            recursion(&k_child, &c_child, &derivation_path[1..])
+            let result = recursion(&self.main_key, &self.chain_code, path);
+            let mut par_fpr = [0u8; 4];
+            par_fpr.copy_from_slice(&result.2[0..4]);
+            RawExtendedKey {
+                key_type: self.key_type.clone(),
+                depth: self.depth + path.len() as u8,
+                parent_fingerprint: par_fpr,
+                child_number: path.last().unwrap().to_be_bytes(),
+                chain_code: result.1,
+                main_key: result.0,
+            }
         }
     }
 
-    if path.len() == 0 {
-        input_ext_key.clone()
-    } else {
-        let result = recursion(&input_ext_key.main_key, &input_ext_key.chain_code, path);
-        let mut par_fpr = [0u8; 4];
-        par_fpr.copy_from_slice(&result.2[0..4]);
-        RawExtendedKey {
-            key_type: input_ext_key.key_type.clone(),
-            depth: input_ext_key.depth + path.len() as u8,
-            parent_fingerprint: par_fpr,
-            child_number: path.last().unwrap().to_be_bytes(),
-            chain_code: result.1,
-            main_key: result.0,
-        }
+    pub fn secret_from_enthropy(enthropy: &[u8], path: &[u32]) -> Self {
+        let mut mac = Hmac::<Sha512>::new_varkey(b"Bitcoin seed").unwrap();
+        mac.input(enthropy);
+        let result = mac.result().code();
+        let mut master_key = [0u8; 32];
+        master_key.copy_from_slice(&result[..32]);
+        let mut master_chain_code = [0u8; 32];
+        master_chain_code.copy_from_slice(&result[32..]);
+        let master_raw_ext_key = RawExtendedKey {
+            key_type: KeyType::MainnetPrivate,
+            depth: 0,
+            parent_fingerprint: [0, 0, 0, 0],
+            child_number: [0, 0, 0, 0],
+            chain_code: master_chain_code,
+            main_key: KeyBytes::Private(master_key),
+        };
+        let final_raw_ext_key = master_raw_ext_key.raw_tree_expander(path);
+        final_raw_ext_key
     }
+
+    pub fn public_from_enthropy(enthropy: &[u8], path: &[u32]) -> Self {
+        Self::secret_from_enthropy(enthropy, path).ext_pub()
+    }
+
 }
+
 pub fn hd_from_seed_secret(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
-    let mut mac = Hmac::<Sha512>::new_varkey(b"Bitcoin seed").unwrap();
-    mac.input(enthropy);
-    let result = mac.result().code();
-    let mut master_key = [0u8; 32];
-    master_key.copy_from_slice(&result[..32]);
-    let mut master_chain_code = [0u8; 32];
-    master_chain_code.copy_from_slice(&result[32..]);
-    let master_raw_ext_key = RawExtendedKey {
-        key_type: KeyType::MainnetPrivate,
-        depth: 0,
-        parent_fingerprint: [0, 0, 0, 0],
-        child_number: [0, 0, 0, 0],
-        chain_code: master_chain_code,
-        main_key: KeyBytes::Private(master_key),
-    };
-    let final_raw_ext_key = raw_tree_expander(&master_raw_ext_key, path);
-    final_raw_ext_key.serialize()
+    RawExtendedKey::secret_from_enthropy(enthropy, path).serialize()
+}
+
+pub fn hd_from_seed_public(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
+    RawExtendedKey::public_from_enthropy(enthropy, path).serialize()
 }
 
 #[cfg(test)]
@@ -214,9 +226,16 @@ mod test {
     ];
 
     #[test]
-    fn test_ext_priv0() {
+    fn test_ext_keys_from_seed_0() {
         let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[]);
+        let public_key = crate::bip32::hd_from_seed_public(&SEED, &[]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
+        let xpub = crate::base58::bytes_to_base58(&public_key);
+        assert_eq!(
+            xpub,
+            "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsef\
+            D265TMg7usUDFdp6W1EGMcet8"
+        );
         assert_eq!(
             xpriv,
             "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMR\
@@ -225,7 +244,14 @@ mod test {
     }
 
     #[test]
-    fn test_ext_priv1() {
+    fn test_ext_keys_from_seed_1() {
+        let public_key = crate::bip32::hd_from_seed_public(&SEED, &[0x80000000]);
+        let xpub = crate::base58::bytes_to_base58(&public_key);
+        assert_eq!(
+            xpub,
+            "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bg\
+            wQ9xv5ski8PX9rL2dZXvgGDnw"
+        );
         let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
@@ -236,7 +262,14 @@ mod test {
     }
 
     #[test]
-    fn test_ext_priv2() {
+    fn test_ext_keys_from_seed_2() {
+        let public_key = crate::bip32::hd_from_seed_public(&SEED, &[0x80000000, 1]);
+        let xpub = crate::base58::bytes_to_base58(&public_key);
+        assert_eq!(
+            xpub,
+            "xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq52\
+            7Hqck2AxYysAA7xmALppuCkwQ"
+        );
         let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
@@ -247,7 +280,14 @@ mod test {
     }
 
     #[test]
-    fn test_ext_priv3() {
+    fn test_ext_keys_from_seed_3() {
+        let public_key = crate::bip32::hd_from_seed_public(&SEED, &[0x80000000, 1, 0x80000002]);
+        let xpub = crate::base58::bytes_to_base58(&public_key);
+        assert_eq!(
+            xpub,
+            "xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7\
+            epu4trkrX7x7DogT5Uv6fcLW5"
+        );
         let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1, 0x80000002]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
@@ -258,7 +298,14 @@ mod test {
     }
 
     #[test]
-    fn test_ext_priv4() {
+    fn test_ext_keys_from_seed_4() {
+        let public_key = crate::bip32::hd_from_seed_public(&SEED, &[0x80000000, 1, 0x80000002, 2]);
+        let xpub = crate::base58::bytes_to_base58(&public_key);
+        assert_eq!(
+            xpub,
+            "xpub6FHa3pjLCk84BayeJxFW2SP4XRrFd1JYnxeLeU8EqN3vDfZmbqBqaGJAyiLjTAwm6ZLRQUMv1ZACTj37sR\
+            62cfN7fe5JnJ7dh8zL4fiyLHV"
+        );
         let private_key = crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1, 0x80000002, 2]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
         assert_eq!(
@@ -269,7 +316,15 @@ mod test {
     }
 
     #[test]
-    fn test_ext_priv5() {
+    fn test_ext_keys_from_seed_5() {
+        let public_key =
+            crate::bip32::hd_from_seed_public(&SEED, &[0x80000000, 1, 0x80000002, 2, 1000000000]);
+        let xpub = crate::base58::bytes_to_base58(&public_key);
+        assert_eq!(
+            xpub,
+            "xpub6H1LXWLaKsWFhvm6RVpEL9P4KfRZSW7abD2ttkWP3SSQvnyA8FSVqNTEcYFgJS2UaFcxupHiYkro49S8yG\
+            asTvXEYBVPamhGW6cFJodrTHy"
+        );
         let private_key =
             crate::bip32::hd_from_seed_secret(&SEED, &[0x80000000, 1, 0x80000002, 2, 1000000000]);
         let xpriv = crate::base58::bytes_to_base58(&private_key);
