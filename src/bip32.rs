@@ -1,7 +1,9 @@
 use hmac::{Hmac, Mac};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use sha2::Sha512;
+use std::convert::TryInto;
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 const MAINNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x88, 0xad, 0xe4];
 const MAINNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
@@ -56,6 +58,16 @@ enum KeyBytes {
     Private([u8; 32]),
 }
 
+#[derive(Debug)]
+pub struct ExtKeyParseError(pub &'static str);
+
+impl Error for ExtKeyParseError {}
+impl Display for ExtKeyParseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.write_str(self.0)
+    }
+}
+
 impl KeyBytes {
     fn as_public_bytes(&self) -> [u8; 33] {
         match self {
@@ -104,9 +116,7 @@ impl KeyBytes {
                 copy_to_offset(&mut output, 1, private_key);
                 output
             }
-            Self::Public(public_key) => {
-                *public_key
-            }
+            Self::Public(public_key) => *public_key,
         }
     }
 
@@ -126,6 +136,49 @@ pub struct RawExtendedKey {
 }
 
 impl RawExtendedKey {
+    pub fn parse_from_bytes(bytes: &[u8]) -> Result<Self, ExtKeyParseError> {
+        if bytes.len() != 82 {
+            return Err(ExtKeyParseError("Bad key length"));
+        }
+        let depth = bytes[4];
+        let parent_fingerprint: [u8; 4] = bytes[5..9].try_into().unwrap();
+        let child_number: [u8; 4] = bytes[9..13].try_into().unwrap();
+        let chain_code: [u8; 32] = bytes[13..45].try_into().unwrap();
+        let sha256d_checksum = crate::hashes::sha256d(&bytes[0..78]);
+        if sha256d_checksum[0..4] != bytes[78..82] {
+            return Err(ExtKeyParseError("Bad checksum"));
+        }
+        let (key_type, main_key) = match bytes[0..4].try_into().unwrap() {
+            MAINNET_PRIVATE_MAGIC => (
+                KeyType::MainnetPrivate,
+                KeyBytes::Private(bytes[46..78].try_into().unwrap()),
+            ),
+            TESTNET_PRIVATE_MAGIC => (
+                KeyType::TestnetPrivate,
+                KeyBytes::Private(bytes[46..78].try_into().unwrap()),
+            ),
+            MAINNET_PUBLIC_MAGIC => {
+                let mut pub_bytes = [0u8; 33];
+                pub_bytes.copy_from_slice(&bytes[45..78]);
+                (KeyType::MainnetPublic, KeyBytes::Public(pub_bytes))
+            }
+            TESTNET_PUBLIC_MAGIC => {
+                let mut pub_bytes = [0u8; 33];
+                pub_bytes.copy_from_slice(&bytes[45..78]);
+                (KeyType::TestnetPublic, KeyBytes::Public(pub_bytes))
+            }
+            _ => return Err(ExtKeyParseError("Invalid key")),
+        };
+        Ok(Self {
+            key_type,
+            depth,
+            parent_fingerprint,
+            child_number,
+            chain_code,
+            main_key,
+        })
+    }
+
     pub fn serialize(&self) -> [u8; 82] {
         let mut output: [u8; 82] = [0; 82];
         let network_key_magic = match self.key_type {
@@ -204,7 +257,6 @@ impl RawExtendedKey {
     pub fn public_from_enthropy(enthropy: &[u8], path: &[u32]) -> Self {
         Self::secret_from_enthropy(enthropy, path).ext_pub()
     }
-
 }
 
 pub fn secret_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
@@ -217,7 +269,7 @@ pub fn public_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
 
 #[cfg(test)]
 mod test {
-
+    use crate::{base58, bip32};
     const SEED: [u8; 16] = [
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
         0x0f,
@@ -225,10 +277,10 @@ mod test {
 
     #[test]
     fn test_ext_keys_from_seed_0() {
-        let private_key = crate::bip32::secret_ext_key_from_enthropy(&SEED, &[]);
-        let public_key = crate::bip32::public_ext_key_from_enthropy(&SEED, &[]);
-        let xpriv = crate::base58::bytes_to_base58(&private_key);
-        let xpub = crate::base58::bytes_to_base58(&public_key);
+        let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[]);
+        let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[]);
+        let xpriv = base58::bytes_to_base58(&private_key);
+        let xpub = base58::bytes_to_base58(&public_key);
         assert_eq!(
             xpub,
             "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsef\
@@ -243,15 +295,15 @@ mod test {
 
     #[test]
     fn test_ext_keys_from_seed_1() {
-        let public_key = crate::bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000]);
-        let xpub = crate::base58::bytes_to_base58(&public_key);
+        let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000]);
+        let xpub = base58::bytes_to_base58(&public_key);
         assert_eq!(
             xpub,
             "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bg\
             wQ9xv5ski8PX9rL2dZXvgGDnw"
         );
-        let private_key = crate::bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000]);
-        let xpriv = crate::base58::bytes_to_base58(&private_key);
+        let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000]);
+        let xpriv = base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
             "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCesnDYUhd7oWgT11\
@@ -261,15 +313,15 @@ mod test {
 
     #[test]
     fn test_ext_keys_from_seed_2() {
-        let public_key = crate::bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]);
-        let xpub = crate::base58::bytes_to_base58(&public_key);
+        let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]);
+        let xpub = base58::bytes_to_base58(&public_key);
         assert_eq!(
             xpub,
             "xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq52\
             7Hqck2AxYysAA7xmALppuCkwQ"
         );
-        let private_key = crate::bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]);
-        let xpriv = crate::base58::bytes_to_base58(&private_key);
+        let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]);
+        let xpriv = base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
             "xprv9wTYmMFdV23N2TdNG573QoEsfRrWKQgWeibmLntzniatZvR9BmLnvSxqu53Kw1UmYPxLgboyZQaXwTCg8M\
@@ -279,15 +331,17 @@ mod test {
 
     #[test]
     fn test_ext_keys_from_seed_3() {
-        let public_key = crate::bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]);
-        let xpub = crate::base58::bytes_to_base58(&public_key);
+        let public_key =
+            bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]);
+        let xpub = base58::bytes_to_base58(&public_key);
         assert_eq!(
             xpub,
             "xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7\
             epu4trkrX7x7DogT5Uv6fcLW5"
         );
-        let private_key = crate::bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]);
-        let xpriv = crate::base58::bytes_to_base58(&private_key);
+        let private_key =
+            bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]);
+        let xpriv = base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
             "xprv9z4pot5VBttmtdRTWfWQmoH1taj2axGVzFqSb8C9xaxKymcFzXBDptWmT7FwuEzG3ryjH4ktypQSAewRiN\
@@ -297,15 +351,17 @@ mod test {
 
     #[test]
     fn test_ext_keys_from_seed_4() {
-        let public_key = crate::bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]);
-        let xpub = crate::base58::bytes_to_base58(&public_key);
+        let public_key =
+            bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]);
+        let xpub = base58::bytes_to_base58(&public_key);
         assert_eq!(
             xpub,
             "xpub6FHa3pjLCk84BayeJxFW2SP4XRrFd1JYnxeLeU8EqN3vDfZmbqBqaGJAyiLjTAwm6ZLRQUMv1ZACTj37sR\
             62cfN7fe5JnJ7dh8zL4fiyLHV"
         );
-        let private_key = crate::bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]);
-        let xpriv = crate::base58::bytes_to_base58(&private_key);
+        let private_key =
+            bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]);
+        let xpriv = base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
             "xprvA2JDeKCSNNZky6uBCviVfJSKyQ1mDYahRjijr5idH2WwLsEd4Hsb2Tyh8RfQMuPh7f7RtyzTtdrbdqqsun\
@@ -315,21 +371,61 @@ mod test {
 
     #[test]
     fn test_ext_keys_from_seed_5() {
-        let public_key =
-            crate::bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000]);
-        let xpub = crate::base58::bytes_to_base58(&public_key);
+        let public_key = bip32::public_ext_key_from_enthropy(
+            &SEED,
+            &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000],
+        );
+        let xpub = base58::bytes_to_base58(&public_key);
         assert_eq!(
             xpub,
             "xpub6H1LXWLaKsWFhvm6RVpEL9P4KfRZSW7abD2ttkWP3SSQvnyA8FSVqNTEcYFgJS2UaFcxupHiYkro49S8yG\
             asTvXEYBVPamhGW6cFJodrTHy"
         );
-        let private_key =
-            crate::bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000]);
-        let xpriv = crate::base58::bytes_to_base58(&private_key);
+        let private_key = bip32::secret_ext_key_from_enthropy(
+            &SEED,
+            &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000],
+        );
+        let xpriv = base58::bytes_to_base58(&private_key);
         assert_eq!(
             xpriv,
             "xprvA41z7zogVVwxVSgdKUHDy1SKmdb533PjDz7J6N6mV6uS3ze1ai8FHa8kmHScGpWmj4WggLyQjgPie1rFSr\
             uoUihUZREPSL39UNdE3BBDu76"
         );
+    }
+
+    #[test]
+    fn test_serialization_deserialization_1() {
+        let pub_str = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1\
+            VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
+        let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6\
+            KCesnDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7";
+        let serialized_priv_key = bip32::RawExtendedKey::parse_from_bytes(
+            base58::base58_to_bytes(priv_str).unwrap().as_slice(),
+        )
+        .unwrap();
+        assert_eq!(
+            base58::bytes_to_base58(&serialized_priv_key.ext_pub().serialize()),
+            pub_str.to_owned()
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_checksum_deserialization_1() {
+        let pub_str = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1\
+            VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnx";
+        bip32::RawExtendedKey::parse_from_bytes(
+            base58::base58_to_bytes(pub_str).unwrap().as_slice()
+        ).expect("Should fail");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_checksum_deserialization_2() {
+        let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6\
+            KCesnDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ8";
+        bip32::RawExtendedKey::parse_from_bytes(
+            base58::base58_to_bytes(priv_str).unwrap().as_slice()
+        ).expect("Should fail");
     }
 }
