@@ -199,12 +199,22 @@ impl RawExtendedKey {
     }
 
     pub fn ext_pub(mut self) -> Self {
-        self.key_type = KeyType::MainnetPublic;
-        self.main_key = self.main_key.as_public();
-        self
+        match self.key_type {
+            KeyType::MainnetPrivate => {
+                self.key_type = KeyType::MainnetPublic;
+                self.main_key = self.main_key.as_public();
+                self
+            }
+            KeyType::TestnetPrivate => {
+                self.key_type = KeyType::TestnetPublic;
+                self.main_key = self.main_key.as_public();
+                self
+            }
+            _ => self
+        }
     }
 
-    fn raw_tree_expander(&self, path: &[u32]) -> RawExtendedKey {
+    fn raw_tree_expander(&self, path: &[u32]) -> Self {
         fn recursion(
             k_par: &KeyBytes,
             c_par: &[u8; 32],
