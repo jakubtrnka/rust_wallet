@@ -28,7 +28,11 @@ fn ckd(
 ) -> Result<(KeyBytes, [u8; 32]), Box<dyn Error>> {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
     if index >= 0x8000_0000 {
-        mac.input(&k_par.as_33_bytes());
+        if let KeyBytes::Private(_) = k_par {
+            mac.input(&k_par.as_33_bytes());
+        } else {
+            return Err(Box::new(secp256k1::Error::InvalidSecretKey));
+        }
     } else {
         mac.input(&k_par.as_public_bytes());
     }
@@ -108,7 +112,6 @@ impl KeyBytes {
             (Self::Private(priv_tmp), Self::Public(pub_tmp)) => add_op(priv_tmp, pub_tmp),
         }
     }
-
     fn as_33_bytes(&self) -> [u8; 33] {
         match self {
             Self::Private(private_key) => {
@@ -210,11 +213,12 @@ impl RawExtendedKey {
                 self.main_key = self.main_key.as_public();
                 self
             }
-            _ => self
+            _ => self,
         }
     }
 
     fn raw_tree_expander(&self, path: &[u32]) -> Self {
+        // TODO: handle failures for hardened keys as Result<Self, Box<dyn Error>>
         fn recursion(
             k_par: &KeyBytes,
             c_par: &[u8; 32],
@@ -266,6 +270,14 @@ impl RawExtendedKey {
 
     pub fn public_from_enthropy(enthropy: &[u8], path: &[u32]) -> Self {
         Self::secret_from_enthropy(enthropy, path).ext_pub()
+    }
+
+    pub fn child_key_pair(&self, index: u32) -> ([u8; 33], Option<[u8; 32]>) {
+        let child_no = self.raw_tree_expander(&[index]);
+        match child_no.main_key {
+            KeyBytes::Private(priv_key) => (child_no.main_key.as_public_bytes(), Some(priv_key)),
+            KeyBytes::Public(pub_key) => (pub_key, None),
+        }
     }
 }
 
