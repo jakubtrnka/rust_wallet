@@ -21,18 +21,16 @@ fn copy_to_offset(target: &mut [u8], mut offset: usize, source: &[u8]) {
     }
 }
 
-fn ckd(
-    k_par: &KeyBytes,
-    c_par: &[u8; 32],
-    index: u32,
-) -> Result<(KeyBytes, [u8; 32]), Box<dyn Error>> {
+fn ckd(k_par: &KeyBytes, c_par: &[u8; 32], index: u32) -> Result<(KeyBytes, [u8; 32]), BIP32Error> {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
     if index >= 0x8000_0000 {
         if let KeyBytes::Private(priv_bytes) = k_par {
             mac.input(&[0]);
             mac.input(priv_bytes);
         } else {
-            return Err(Box::new(BIP32Error::KeyDerivationError));
+            return Err(BIP32Error::KeyDerivationError(
+                "Cannot derive hardened child public key",
+            ));
         }
     } else {
         mac.input(&k_par.as_public_bytes());
@@ -44,7 +42,9 @@ fn ckd(
     i_l.copy_from_slice(&result[0..32]);
     i_r.copy_from_slice(&result[32..]);
 
-    let child_key = KeyBytes::Private(i_l).ec_or_scalar_add(k_par)?;
+    let child_key = KeyBytes::Private(i_l)
+        .ec_or_scalar_add(k_par)
+        .map_err(|_| BIP32Error::Secp256k1Error)?;
     Ok((child_key, i_r))
 }
 
@@ -66,7 +66,8 @@ enum KeyBytes {
 #[derive(Debug)]
 pub enum BIP32Error {
     ExtendedKeyParseError(&'static str),
-    KeyDerivationError,
+    KeyDerivationError(&'static str),
+    Secp256k1Error,
 }
 
 impl Error for BIP32Error {}
@@ -91,7 +92,7 @@ impl KeyBytes {
         Self::Public(self.as_public_bytes())
     }
 
-    fn ec_or_scalar_add(&self, other: &Self) -> Result<Self, Box<dyn Error>> {
+    fn ec_or_scalar_add(&self, other: &Self) -> Result<Self, secp256k1::Error> {
         let ctx = Secp256k1::new();
         let add_op = |priv_tmp: &[u8; 32], pub_tmp: &[u8; 33]| {
             let lhs_point = PublicKey::from_slice(pub_tmp)?;
@@ -218,39 +219,39 @@ impl RawExtendedKey {
         }
     }
 
-    fn raw_tree_expander(&self, path: &[u32]) -> Self {
+    fn raw_tree_expander(&self, path: &[u32]) -> Result<Self, BIP32Error> {
         // TODO: handle failures for hardened keys as Result<Self, Box<dyn Error>>
         fn recursion(
             k_par: &KeyBytes,
             c_par: &[u8; 32],
             derivation_path: &[u32],
-        ) -> (KeyBytes, [u8; 32], [u8; 20]) {
-            let (k_child, c_child) = ckd(k_par, c_par, derivation_path[0]).unwrap();
+        ) -> Result<(KeyBytes, [u8; 32], [u8; 20]), BIP32Error> {
+            let (k_child, c_child) = ckd(k_par, c_par, derivation_path[0])?;
             if derivation_path.len() == 1 {
-                (k_child, c_child, k_par.public_identifier())
+                Ok((k_child, c_child, k_par.public_identifier()))
             } else {
                 recursion(&k_child, &c_child, &derivation_path[1..])
             }
         }
 
         if path.is_empty() {
-            self.clone()
+            Ok(self.clone())
         } else {
-            let result = recursion(&self.main_key, &self.chain_code, path);
+            let result = recursion(&self.main_key, &self.chain_code, path)?;
             let mut par_fpr = [0u8; 4];
             par_fpr.copy_from_slice(&result.2[0..4]);
-            RawExtendedKey {
+            Ok(RawExtendedKey {
                 key_type: self.key_type.clone(),
                 depth: self.depth + path.len() as u8,
                 parent_fingerprint: par_fpr,
                 child_number: path.last().unwrap().to_be_bytes(),
                 chain_code: result.1,
                 main_key: result.0,
-            }
+            })
         }
     }
 
-    pub fn secret_from_enthropy(enthropy: &[u8], path: &[u32]) -> Self {
+    pub fn secret_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<Self, BIP32Error> {
         let mut mac = Hmac::<Sha512>::new_varkey(b"Bitcoin seed").unwrap();
         mac.input(enthropy);
         let result = mac.result().code();
@@ -269,25 +270,27 @@ impl RawExtendedKey {
         master_raw_ext_key.raw_tree_expander(path)
     }
 
-    pub fn public_from_enthropy(enthropy: &[u8], path: &[u32]) -> Self {
-        Self::secret_from_enthropy(enthropy, path).ext_pub()
+    pub fn public_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<Self, BIP32Error> {
+        Self::secret_from_enthropy(enthropy, path).map(|ext_priv_key| ext_priv_key.ext_pub())
     }
 
-    pub fn child_key_pair(&self, index: u32) -> ([u8; 33], Option<[u8; 32]>) {
-        let child_no = self.raw_tree_expander(&[index]);
+    pub fn child_key_pair(&self, index: u32) -> Result<([u8; 33], Option<[u8; 32]>), BIP32Error> {
+        let child_no = self.raw_tree_expander(&[index])?;
         match child_no.main_key {
-            KeyBytes::Private(priv_key) => (child_no.main_key.as_public_bytes(), Some(priv_key)),
-            KeyBytes::Public(pub_key) => (pub_key, None),
+            KeyBytes::Private(priv_key) => {
+                Ok((child_no.main_key.as_public_bytes(), Some(priv_key)))
+            }
+            KeyBytes::Public(pub_key) => Ok((pub_key, None)),
         }
     }
 }
 
-pub fn secret_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
-    RawExtendedKey::secret_from_enthropy(enthropy, path).serialize()
+pub fn secret_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8; 82], BIP32Error> {
+    RawExtendedKey::secret_from_enthropy(enthropy, path).map(|ext_key| ext_key.serialize())
 }
 
-pub fn public_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> [u8; 82] {
-    RawExtendedKey::public_from_enthropy(enthropy, path).serialize()
+pub fn public_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8; 82], BIP32Error> {
+    RawExtendedKey::public_from_enthropy(enthropy, path).map(|ext_key| ext_key.serialize())
 }
 
 #[cfg(test)]

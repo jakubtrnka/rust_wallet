@@ -5,8 +5,8 @@ const SEED: [u8; 16] = [
 
 #[test]
 fn test_ext_keys_from_seed_0() {
-    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[]);
-    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[]);
+    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[]).unwrap();
+    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[]).unwrap();
     let xpriv = base58::bytes_to_base58(&private_key);
     let xpub = base58::bytes_to_base58(&public_key);
     assert_eq!(
@@ -23,14 +23,14 @@ fn test_ext_keys_from_seed_0() {
 
 #[test]
 fn test_ext_keys_from_seed_1() {
-    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000]);
+    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000]).unwrap();
     let xpub = base58::bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bg\
          wQ9xv5ski8PX9rL2dZXvgGDnw"
     );
-    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000]);
+    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000]).unwrap();
     let xpriv = base58::bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
@@ -41,14 +41,14 @@ fn test_ext_keys_from_seed_1() {
 
 #[test]
 fn test_ext_keys_from_seed_2() {
-    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]);
+    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]).unwrap();
     let xpub = base58::bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq52\
          7Hqck2AxYysAA7xmALppuCkwQ"
     );
-    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]);
+    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]).unwrap();
     let xpriv = base58::bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
@@ -59,14 +59,16 @@ fn test_ext_keys_from_seed_2() {
 
 #[test]
 fn test_ext_keys_from_seed_3() {
-    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]);
+    let public_key =
+        bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]).unwrap();
     let xpub = base58::bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4\
         trkrX7x7DogT5Uv6fcLW5"
     );
-    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]);
+    let private_key =
+        bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]).unwrap();
     let xpriv = base58::bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
@@ -77,14 +79,16 @@ fn test_ext_keys_from_seed_3() {
 
 #[test]
 fn test_ext_keys_from_seed_4() {
-    let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]);
+    let public_key =
+        bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]).unwrap();
     let xpub = base58::bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub6FHa3pjLCk84BayeJxFW2SP4XRrFd1JYnxeLeU8EqN3vDfZmbqBqaGJAyiLjTAwm6ZLRQUMv1ZACTj37sR62cf\
         N7fe5JnJ7dh8zL4fiyLHV"
     );
-    let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]);
+    let private_key =
+        bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]).unwrap();
     let xpriv = base58::bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
@@ -96,7 +100,8 @@ fn test_ext_keys_from_seed_4() {
 #[test]
 fn test_ext_keys_from_seed_5() {
     let public_key =
-        bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000]);
+        bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000])
+            .unwrap();
     let xpub = base58::bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
@@ -104,7 +109,8 @@ fn test_ext_keys_from_seed_5() {
         XEYBVPamhGW6cFJodrTHy"
     );
     let private_key =
-        bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000]);
+        bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000])
+            .unwrap();
     let xpriv = base58::bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
