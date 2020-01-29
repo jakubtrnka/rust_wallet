@@ -28,10 +28,11 @@ fn ckd(
 ) -> Result<(KeyBytes, [u8; 32]), Box<dyn Error>> {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
     if index >= 0x8000_0000 {
-        if let KeyBytes::Private(_) = k_par {
-            mac.input(&k_par.as_33_bytes());
+        if let KeyBytes::Private(priv_bytes) = k_par {
+            mac.input(&[0]);
+            mac.input(priv_bytes);
         } else {
-            return Err(Box::new(secp256k1::Error::InvalidSecretKey));
+            return Err(Box::new(BIP32Error::KeyDerivationError));
         }
     } else {
         mac.input(&k_par.as_public_bytes());
@@ -63,12 +64,15 @@ enum KeyBytes {
 }
 
 #[derive(Debug)]
-pub struct ExtKeyParseError(pub &'static str);
+pub enum BIP32Error {
+    ExtendedKeyParseError(&'static str),
+    KeyDerivationError,
+}
 
-impl Error for ExtKeyParseError {}
-impl Display for ExtKeyParseError {
+impl Error for BIP32Error {}
+impl Display for BIP32Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        f.write_str(self.0)
+        f.write_str(self.to_string().as_str())
     }
 }
 
@@ -112,16 +116,6 @@ impl KeyBytes {
             (Self::Private(priv_tmp), Self::Public(pub_tmp)) => add_op(priv_tmp, pub_tmp),
         }
     }
-    fn as_33_bytes(&self) -> [u8; 33] {
-        match self {
-            Self::Private(private_key) => {
-                let mut output = [0; 33];
-                copy_to_offset(&mut output, 1, private_key);
-                output
-            }
-            Self::Public(public_key) => *public_key,
-        }
-    }
 
     fn public_identifier(&self) -> [u8; 20] {
         crate::hashes::hash160(&self.as_public_bytes())
@@ -139,9 +133,9 @@ pub struct RawExtendedKey {
 }
 
 impl RawExtendedKey {
-    pub fn parse_from_bytes(bytes: &[u8]) -> Result<Self, ExtKeyParseError> {
+    pub fn parse_from_bytes(bytes: &[u8]) -> Result<Self, BIP32Error> {
         if bytes.len() != 82 {
-            return Err(ExtKeyParseError("Bad key length"));
+            return Err(BIP32Error::ExtendedKeyParseError("Bad key length"));
         }
         let depth = bytes[4];
         let parent_fingerprint: [u8; 4] = bytes[5..9].try_into().unwrap();
@@ -149,7 +143,7 @@ impl RawExtendedKey {
         let chain_code: [u8; 32] = bytes[13..45].try_into().unwrap();
         let sha256d_checksum = crate::hashes::sha256d(&bytes[0..78]);
         if sha256d_checksum[0..4] != bytes[78..82] {
-            return Err(ExtKeyParseError("Bad checksum"));
+            return Err(BIP32Error::ExtendedKeyParseError("Bad checksum"));
         }
         let (key_type, main_key) = match bytes[0..4].try_into().unwrap() {
             MAINNET_PRIVATE_MAGIC => (
@@ -170,7 +164,7 @@ impl RawExtendedKey {
                 pub_bytes.copy_from_slice(&bytes[45..78]);
                 (KeyType::TestnetPublic, KeyBytes::Public(pub_bytes))
             }
-            _ => return Err(ExtKeyParseError("Invalid key")),
+            _ => return Err(BIP32Error::ExtendedKeyParseError("Invalid key")),
         };
         Ok(Self {
             key_type,
@@ -195,7 +189,14 @@ impl RawExtendedKey {
         copy_to_offset(&mut output, 5, &self.parent_fingerprint);
         copy_to_offset(&mut output, 9, &self.child_number);
         copy_to_offset(&mut output, 13, &self.chain_code);
-        copy_to_offset(&mut output, 45, &self.main_key.as_33_bytes());
+        match self.main_key {
+            KeyBytes::Private(priv_bytes) => {
+                copy_to_offset(&mut output, 46, &priv_bytes);
+            }
+            KeyBytes::Public(pub_bytes) => {
+                copy_to_offset(&mut output, 45, &pub_bytes);
+            }
+        }
         let checksum = crate::hashes::sha256d(&output[0..78]);
         copy_to_offset(&mut output, 78, &checksum[0..4]);
         output
