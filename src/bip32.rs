@@ -10,16 +10,7 @@ const MAINNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
 const TESTNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
 const TESTNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x35, 0x87, 0xcf];
 
-fn copy_to_offset(target: &mut [u8], mut offset: usize, source: &[u8]) {
-    for element in source {
-        if let Some(x) = target.get_mut(offset) {
-            *x = *element;
-            offset += 1;
-        } else {
-            break;
-        }
-    }
-}
+use super::copy_to_offset;
 
 fn ckd(k_par: &KeyBytes, c_par: &[u8; 32], index: u32) -> Result<(KeyBytes, [u8; 32]), BIP32Error> {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
