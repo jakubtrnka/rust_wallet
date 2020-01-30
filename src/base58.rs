@@ -21,6 +21,9 @@ pub fn bytes_to_base58(bytes: &[u8]) -> String {
             carry /= 58;
         }
     }
+    bytes.iter().take_while(|byte| **byte == 0u8).for_each(|_| {
+        output.push(0);
+    });
     String::from_iter(output.iter().rev().map(|c| ABC[*c as usize]))
 }
 
@@ -51,6 +54,9 @@ pub fn base58_to_bytes(code: &str) -> Result<Vec<u8>, &'static str> {
             }
         }
     }
+    digits.iter().take_while(|digit| **digit == Some(0)).for_each(|_| {
+        output.push(0);
+    });
     Ok(output.iter().rev().map(|c| *c as u8).collect())
 }
 
