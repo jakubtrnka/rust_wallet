@@ -5,12 +5,12 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use super::copy_to_offset;
+
 const MAINNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x88, 0xad, 0xe4];
 const MAINNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
 const TESTNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
 const TESTNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x35, 0x87, 0xcf];
-
-use super::copy_to_offset;
 
 fn ckd(k_par: &KeyBytes, c_par: &[u8; 32], index: u32) -> Result<(KeyBytes, [u8; 32]), BIP32Error> {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
@@ -210,7 +210,7 @@ impl RawExtendedKey {
         }
     }
 
-    fn raw_tree_expander(&self, path: &[u32]) -> Result<Self, BIP32Error> {
+    pub fn expand(&self, path: &[u32]) -> Result<Self, BIP32Error> {
         // TODO: handle failures for hardened keys as Result<Self, Box<dyn Error>>
         fn recursion(
             k_par: &KeyBytes,
@@ -258,7 +258,7 @@ impl RawExtendedKey {
             chain_code: master_chain_code,
             main_key: KeyBytes::Private(master_key),
         };
-        master_raw_ext_key.raw_tree_expander(path)
+        master_raw_ext_key.expand(path)
     }
 
     pub fn public_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<Self, BIP32Error> {
@@ -266,7 +266,7 @@ impl RawExtendedKey {
     }
 
     pub fn child_key_pair(&self, index: u32) -> Result<([u8; 33], Option<[u8; 32]>), BIP32Error> {
-        let child_no = self.raw_tree_expander(&[index])?;
+        let child_no = self.expand(&[index])?;
         match child_no.main_key {
             KeyBytes::Private(priv_key) => {
                 Ok((child_no.main_key.as_public_bytes(), Some(priv_key)))

@@ -54,9 +54,12 @@ pub fn base58_to_bytes(code: &str) -> Result<Vec<u8>, &'static str> {
             }
         }
     }
-    digits.iter().take_while(|digit| **digit == Some(0)).for_each(|_| {
-        output.push(0);
-    });
+    digits
+        .iter()
+        .take_while(|digit| **digit == Some(0))
+        .for_each(|_| {
+            output.push(0);
+        });
     Ok(output.iter().rev().map(|c| *c as u8).collect())
 }
 
@@ -71,9 +74,7 @@ mod test {
                 0x00, 0xb8, 0xfd, 0x8b, 0x81, 0xc2, 0xbc, 0x25, 0x68, 0x53, 0x9a, 0x69, 0x2a, 0x1e,
                 0x55, 0x84, 0xcb, 0x18, 0xee, 0xc3, 0x32, 0x49, 0x28, 0x5a, 0x79
             ]),
-            String::from(
-                "1Hs94uhnXjDszV3PUsRyFjrRimN3SC8zEU"
-            )
+            String::from("1Hs94uhnXjDszV3PUsRyFjrRimN3SC8zEU")
         );
         assert_eq!(
             bytes_to_base58(&[
@@ -119,7 +120,8 @@ mod test {
             Ok([
                 0x00, 0xb8, 0xfd, 0x8b, 0x81, 0xc2, 0xbc, 0x25, 0x68, 0x53, 0x9a, 0x69, 0x2a, 0x1e,
                 0x55, 0x84, 0xcb, 0x18, 0xee, 0xc3, 0x32, 0x49, 0x28, 0x5a, 0x79
-            ].to_vec()),
+            ]
+            .to_vec()),
         );
     }
 }
