@@ -24,6 +24,21 @@ impl AddressFormat {
         copy_to_offset(&mut output_array, 21, &checksum[0..4]);
         bytes_to_base58(&mut output_array)
     }
+
+    pub fn from_private_key(&self, priv_key: &[u8; 32]) -> String {
+        let mut output_array = [0u8; 38];
+        match self {
+            AddressFormat::LegacyTestnet => { unimplemented!() }
+            AddressFormat::LegacyMainnet => {
+                output_array[0] = 0x80;
+            }
+        }
+        copy_to_offset(&mut output_array, 1, priv_key);
+        output_array[33] = 1;  // for compressed pub key
+        let checksum = sha256d(&mut output_array[0..34]);
+        copy_to_offset(&mut output_array, 34, &checksum[0..4]);
+        bytes_to_base58(&mut output_array)
+    }
 }
 
 #[cfg(test)]
@@ -41,5 +56,19 @@ mod test {
             legacy_mainnet,
             String::from("1XEGXTfjsJ27h9Z4WvXrP7jVjs8riF8Li")
         );
+    }
+    
+    #[test]
+    fn priv_key_to_wif() {
+        let raw_private = [
+            0xf4, 0x6c, 0x68, 0x88, 0xb8, 0x46, 0xd7, 0x1f, 0x11, 0x19, 0x33, 0x66, 0xc9, 0x22,
+            0x9b, 0x7f, 0xdf, 0x99, 0xf8, 0xfd, 0xed, 0xee, 0xe6, 0x36, 0x9c, 0x83, 0xfa, 0xb2,
+            0x58, 0xff, 0xd2, 0x57
+        ];
+        assert_eq!(
+            AddressFormat::LegacyMainnet.from_private_key(&raw_private),
+            String::from("L5QqZr8wuvDMPfadrZHrrJ96rqiFQaCvq5giC6FN2owmfWPvhVSB")
+        );
+
     }
 }
