@@ -126,7 +126,7 @@ fn test_deserialization_serialization_1() {
                    TFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
     let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCes\
                     nDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7";
-    let deserialized_priv_key = bip32::RawExtendedKey::parse_from_bytes(
+    let deserialized_priv_key = bip32::Bip32ExtendedKey::parse_from_bytes(
         base58::base58_to_bytes(priv_str).unwrap().as_slice(),
     )
     .unwrap();
@@ -141,7 +141,7 @@ fn test_deserialization_serialization_1() {
 fn test_bad_checksum_deserialization_1() {
     let pub_str = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsf\
                    TFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnx";
-    bip32::RawExtendedKey::parse_from_bytes(base58::base58_to_bytes(pub_str).unwrap().as_slice())
+    bip32::Bip32ExtendedKey::parse_from_bytes(base58::base58_to_bytes(pub_str).unwrap().as_slice())
         .expect("Should fail");
 }
 
@@ -150,15 +150,17 @@ fn test_bad_checksum_deserialization_1() {
 fn test_bad_checksum_deserialization_2() {
     let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCes\
                     nDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ8";
-    bip32::RawExtendedKey::parse_from_bytes(base58::base58_to_bytes(priv_str).unwrap().as_slice())
-        .expect("Should fail");
+    bip32::Bip32ExtendedKey::parse_from_bytes(
+        base58::base58_to_bytes(priv_str).unwrap().as_slice(),
+    )
+    .expect("Should fail");
 }
 
 #[test]
 fn test_bip32_address_generation() {
     let priv_str = "xprv9s21ZrQH143K4Kbiy5aZxuQiufMZwNN2L9Txo8apuYEDm1LPMGVnu3GEsMusLwX1cZuto\
                     XWfg2UXuUmKx1mtj4tj9oejzMfcdNQCLNLjq4u";
-    let bip32_ext_key = bip32::RawExtendedKey::parse_from_bytes(
+    let bip32_ext_key = bip32::Bip32ExtendedKey::parse_from_bytes(
         base58::base58_to_bytes(priv_str).unwrap().as_slice(),
     )
     .unwrap()
@@ -174,7 +176,7 @@ fn test_bip32_address_generation() {
         AddressFormat::LegacyMainnet.from_public_key(&pub_key.serialize_public()),
         String::from("1N9c7fqJDvtbr4bAsWtqpzoLM84vsFrnep"),
     );
-    let bip32_ext_key = bip32::RawExtendedKey::parse_from_bytes(
+    let bip32_ext_key = bip32::Bip32ExtendedKey::parse_from_bytes(
         base58::base58_to_bytes(priv_str).unwrap().as_slice(),
     )
     .unwrap()
