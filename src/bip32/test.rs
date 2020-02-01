@@ -166,23 +166,23 @@ fn test_bip32_address_generation() {
     .unwrap();
     let (pub_key, _priv_key) = bip32_ext_key.child_key_pair(0).unwrap();
     assert_eq!(
-        AddressFormat::LegacyMainnet.from_public_key(&pub_key),
+        AddressFormat::LegacyMainnet.from_public_key(&pub_key.serialize_public()),
         String::from("1JMVQY2WnKG4VRX4M7TnEBWW7uwx64v4sd"),
     );
     let (pub_key, _priv_key) = bip32_ext_key.child_key_pair(1332).unwrap();
     assert_eq!(
-        AddressFormat::LegacyMainnet.from_public_key(&pub_key),
+        AddressFormat::LegacyMainnet.from_public_key(&pub_key.serialize_public()),
         String::from("1N9c7fqJDvtbr4bAsWtqpzoLM84vsFrnep"),
     );
     let bip32_ext_key = bip32::RawExtendedKey::parse_from_bytes(
         base58::base58_to_bytes(priv_str).unwrap().as_slice(),
     )
-        .unwrap()
-        .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
-        .unwrap();
+    .unwrap()
+    .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
+    .unwrap();
     let (pub_key, _priv_key) = bip32_ext_key.child_key_pair(1).unwrap();
     assert_eq!(
-        AddressFormat::LegacyMainnet.from_public_key(&pub_key),
+        AddressFormat::LegacyMainnet.from_public_key(&pub_key.serialize_public()),
         String::from("17AqJq66ud4zczFS3rNuxWABU6SiMBBnpH"),
     );
 }

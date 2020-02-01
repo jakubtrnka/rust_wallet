@@ -6,34 +6,30 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use super::copy_to_offset;
+use crate::bip32::BIP32Error::KeyDerivationError;
 
 const MAINNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x88, 0xad, 0xe4];
 const MAINNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
 const TESTNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
 const TESTNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x35, 0x87, 0xcf];
 
-fn ckd(k_par: &KeyBytes, c_par: &[u8; 32], index: u32) -> Result<(KeyBytes, [u8; 32]), BIP32Error> {
+fn ckd(
+    k_par: &BitcoinKey,
+    c_par: &[u8; 32],
+    index: u32,
+) -> Result<(BitcoinKey, [u8; 32]), BIP32Error> {
     let mut mac = Hmac::<Sha512>::new_varkey(c_par).unwrap();
     if index >= 0x8000_0000 {
-        if let KeyBytes::Private(priv_bytes) = k_par {
-            mac.input(&[0]);
-            mac.input(priv_bytes);
-        } else {
-            return Err(BIP32Error::KeyDerivationError(
-                "Cannot derive hardened child public key",
-            ));
-        }
+        mac.input(&[0]);
+        mac.input(&k_par.serialize_private()?);
     } else {
-        mac.input(&k_par.as_public_bytes());
+        mac.input(&k_par.serialize_public());
     }
     mac.input(&index.to_be_bytes());
     let result = mac.result().code();
-    let mut i_l = [0u8; 32];
-    let mut i_r = [0u8; 32];
-    i_l.copy_from_slice(&result[0..32]);
-    i_r.copy_from_slice(&result[32..]);
+    let i_r = result[32..].try_into().unwrap();
 
-    let child_key = KeyBytes::Private(i_l)
+    let child_key = BitcoinKey::new_private(&result[0..32])?
         .ec_or_scalar_add(k_par)
         .map_err(|_| BIP32Error::Secp256k1Error)?;
     Ok((child_key, i_r))
@@ -42,16 +38,14 @@ fn ckd(k_par: &KeyBytes, c_par: &[u8; 32], index: u32) -> Result<(KeyBytes, [u8;
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 enum KeyType {
-    MainnetPrivate,
-    MainnetPublic,
-    TestnetPrivate,
-    TestnetPublic,
+    Mainnet,
+    Testnet,
 }
 
 #[derive(Clone)]
-enum KeyBytes {
-    Public([u8; 33]),
-    Private([u8; 32]),
+pub enum BitcoinKey {
+    Public(secp256k1::PublicKey),
+    Private(secp256k1::SecretKey),
 }
 
 #[derive(Debug)]
@@ -68,49 +62,63 @@ impl Display for BIP32Error {
     }
 }
 
-impl KeyBytes {
-    fn as_public_bytes(&self) -> [u8; 33] {
+impl BitcoinKey {
+    fn new_public(key: &[u8]) -> Result<Self, BIP32Error> {
+        let public_key = PublicKey::from_slice(key)
+            .map_err(|_e| KeyDerivationError("invalid public key bytes"))?;
+        Ok(Self::Public(public_key))
+    }
+
+    fn new_private(key: &[u8]) -> Result<Self, BIP32Error> {
+        let secret = SecretKey::from_slice(key)
+            .map_err(|_e| KeyDerivationError("invalid private key bytes"))?;
+        Ok(Self::Private(secret))
+    }
+
+    fn serialize_public(&self) -> [u8; 33] {
+        match self.as_public() {
+            Self::Public(x) => x.serialize(),
+            Self::Private(_) => unreachable!(),
+        }
+    }
+
+    fn serialize_private(&self) -> Result<[u8; 32], BIP32Error> {
         match self {
-            Self::Public(x) => *x,
-            Self::Private(x) => {
-                let ctx = Secp256k1::new();
-                PublicKey::from_secret_key(&ctx, &SecretKey::from_slice(x).unwrap()).serialize()
-            }
+            Self::Public(_) => Err(KeyDerivationError("Cannot derive private key from public")),
+            Self::Private(x) => Ok(x[..].try_into().unwrap()),
         }
     }
 
     fn as_public(&self) -> Self {
-        Self::Public(self.as_public_bytes())
+        match self {
+            Self::Public(_) => self.clone(),
+            Self::Private(x_prv) => {
+                let ctx = Secp256k1::new();
+                Self::Public(PublicKey::from_secret_key(&ctx, x_prv))
+            }
+        }
     }
 
     fn ec_or_scalar_add(&self, other: &Self) -> Result<Self, secp256k1::Error> {
         let ctx = Secp256k1::new();
-        let add_op = |priv_tmp: &[u8; 32], pub_tmp: &[u8; 33]| {
-            let lhs_point = PublicKey::from_slice(pub_tmp)?;
-            let pub_rhs_pub = PublicKey::from_secret_key(&ctx, &SecretKey::from_slice(priv_tmp)?);
-            Ok(Self::Public(lhs_point.combine(&pub_rhs_pub)?.serialize()))
+        let add_op = |priv_tmp: &SecretKey, pub_tmp: &PublicKey| {
+            Ok(Self::Public(
+                pub_tmp.combine(&PublicKey::from_secret_key(&ctx, priv_tmp))?,
+            ))
         };
         match (self, other) {
             (Self::Public(pub_lhs), Self::Public(pub_rhs)) => {
-                let lhs_point = PublicKey::from_slice(pub_lhs)?;
-                let rhs_point = PublicKey::from_slice(pub_rhs)?;
-                let output = lhs_point.combine(&rhs_point)?;
-                Ok(Self::Public(output.serialize()))
+                let output = pub_lhs.combine(pub_rhs)?;
+                Ok(Self::Public(output))
             }
             (Self::Private(priv_lhs), Self::Private(priv_rhs)) => {
-                let mut lhs_num = SecretKey::from_slice(priv_lhs)?;
-                lhs_num.add_assign(priv_rhs)?;
-                let mut combined = [0u8; 32];
-                combined.copy_from_slice(&lhs_num[..]);
-                Ok(Self::Private(combined))
+                let mut output = *priv_lhs;
+                output.add_assign(&priv_rhs[..])?;
+                Ok(Self::Private(output))
             }
             (Self::Public(pub_tmp), Self::Private(priv_tmp)) => add_op(priv_tmp, pub_tmp),
             (Self::Private(priv_tmp), Self::Public(pub_tmp)) => add_op(priv_tmp, pub_tmp),
         }
-    }
-
-    fn public_identifier(&self) -> [u8; 20] {
-        crate::hashes::hash160(&self.as_public_bytes())
     }
 }
 
@@ -121,7 +129,7 @@ pub struct RawExtendedKey {
     parent_fingerprint: [u8; 4],
     child_number: [u8; 4],
     chain_code: [u8; 32],
-    main_key: KeyBytes,
+    main_key: BitcoinKey,
 }
 
 impl RawExtendedKey {
@@ -138,23 +146,17 @@ impl RawExtendedKey {
             return Err(BIP32Error::ExtendedKeyParseError("Bad checksum"));
         }
         let (key_type, main_key) = match bytes[0..4].try_into().unwrap() {
-            MAINNET_PRIVATE_MAGIC => (
-                KeyType::MainnetPrivate,
-                KeyBytes::Private(bytes[46..78].try_into().unwrap()),
-            ),
-            TESTNET_PRIVATE_MAGIC => (
-                KeyType::TestnetPrivate,
-                KeyBytes::Private(bytes[46..78].try_into().unwrap()),
-            ),
+            MAINNET_PRIVATE_MAGIC => (KeyType::Mainnet, BitcoinKey::new_private(&bytes[46..78])?),
+            TESTNET_PRIVATE_MAGIC => (KeyType::Testnet, BitcoinKey::new_private(&bytes[46..78])?),
             MAINNET_PUBLIC_MAGIC => {
                 let mut pub_bytes = [0u8; 33];
                 pub_bytes.copy_from_slice(&bytes[45..78]);
-                (KeyType::MainnetPublic, KeyBytes::Public(pub_bytes))
+                (KeyType::Mainnet, BitcoinKey::new_public(&pub_bytes)?)
             }
             TESTNET_PUBLIC_MAGIC => {
                 let mut pub_bytes = [0u8; 33];
                 pub_bytes.copy_from_slice(&bytes[45..78]);
-                (KeyType::TestnetPublic, KeyBytes::Public(pub_bytes))
+                (KeyType::Testnet, BitcoinKey::new_public(&pub_bytes)?)
             }
             _ => return Err(BIP32Error::ExtendedKeyParseError("Invalid key")),
         };
@@ -170,56 +172,51 @@ impl RawExtendedKey {
 
     pub fn serialize(&self) -> [u8; 82] {
         let mut output: [u8; 82] = [0; 82];
-        let network_key_magic = match self.key_type {
-            KeyType::MainnetPrivate => MAINNET_PRIVATE_MAGIC,
-            KeyType::MainnetPublic => MAINNET_PUBLIC_MAGIC,
-            KeyType::TestnetPrivate => TESTNET_PRIVATE_MAGIC,
-            KeyType::TestnetPublic => TESTNET_PUBLIC_MAGIC,
+        match (&self.key_type, &self.main_key) {
+            (KeyType::Mainnet, BitcoinKey::Private(_)) => {
+                copy_to_offset(&mut output, 0, &MAINNET_PRIVATE_MAGIC);
+                copy_to_offset(&mut output, 46, &self.main_key.serialize_private().unwrap());
+            }
+            (KeyType::Mainnet, BitcoinKey::Public(_)) => {
+                copy_to_offset(&mut output, 0, &MAINNET_PUBLIC_MAGIC);
+                copy_to_offset(&mut output, 45, &self.main_key.serialize_public());
+            }
+            (KeyType::Testnet, BitcoinKey::Private(_)) => {
+                copy_to_offset(&mut output, 0, &TESTNET_PRIVATE_MAGIC);
+                copy_to_offset(&mut output, 46, &self.main_key.serialize_private().unwrap());
+            }
+            (KeyType::Testnet, BitcoinKey::Public(_)) => {
+                copy_to_offset(&mut output, 0, &TESTNET_PUBLIC_MAGIC);
+                copy_to_offset(&mut output, 45, &self.main_key.serialize_public());
+            }
         };
-        copy_to_offset(&mut output, 0, &network_key_magic);
         copy_to_offset(&mut output, 4, &[self.depth]);
         copy_to_offset(&mut output, 5, &self.parent_fingerprint);
         copy_to_offset(&mut output, 9, &self.child_number);
         copy_to_offset(&mut output, 13, &self.chain_code);
-        match self.main_key {
-            KeyBytes::Private(priv_bytes) => {
-                copy_to_offset(&mut output, 46, &priv_bytes);
-            }
-            KeyBytes::Public(pub_bytes) => {
-                copy_to_offset(&mut output, 45, &pub_bytes);
-            }
-        }
         let checksum = crate::hashes::sha256d(&output[0..78]);
         copy_to_offset(&mut output, 78, &checksum[0..4]);
         output
     }
 
     pub fn ext_pub(mut self) -> Self {
-        match self.key_type {
-            KeyType::MainnetPrivate => {
-                self.key_type = KeyType::MainnetPublic;
-                self.main_key = self.main_key.as_public();
-                self
-            }
-            KeyType::TestnetPrivate => {
-                self.key_type = KeyType::TestnetPublic;
-                self.main_key = self.main_key.as_public();
-                self
-            }
-            _ => self,
-        }
+        self.main_key = self.main_key.as_public();
+        self
     }
 
     pub fn expand(&self, path: &[u32]) -> Result<Self, BIP32Error> {
-        // TODO: handle failures for hardened keys as Result<Self, Box<dyn Error>>
         fn recursion(
-            k_par: &KeyBytes,
+            k_par: &BitcoinKey,
             c_par: &[u8; 32],
             derivation_path: &[u32],
-        ) -> Result<(KeyBytes, [u8; 32], [u8; 20]), BIP32Error> {
+        ) -> Result<(BitcoinKey, [u8; 32], [u8; 20]), BIP32Error> {
             let (k_child, c_child) = ckd(k_par, c_par, derivation_path[0])?;
             if derivation_path.len() == 1 {
-                Ok((k_child, c_child, k_par.public_identifier()))
+                Ok((
+                    k_child,
+                    c_child,
+                    crate::hashes::hash160(&k_par.serialize_public()),
+                ))
             } else {
                 recursion(&k_child, &c_child, &derivation_path[1..])
             }
@@ -246,17 +243,13 @@ impl RawExtendedKey {
         let mut mac = Hmac::<Sha512>::new_varkey(b"Bitcoin seed").unwrap();
         mac.input(enthropy);
         let result = mac.result().code();
-        let mut master_key = [0u8; 32];
-        master_key.copy_from_slice(&result[..32]);
-        let mut master_chain_code = [0u8; 32];
-        master_chain_code.copy_from_slice(&result[32..]);
         let master_raw_ext_key = RawExtendedKey {
-            key_type: KeyType::MainnetPrivate,
+            key_type: KeyType::Mainnet,
             depth: 0,
             parent_fingerprint: [0, 0, 0, 0],
             child_number: [0, 0, 0, 0],
-            chain_code: master_chain_code,
-            main_key: KeyBytes::Private(master_key),
+            chain_code: result[32..].try_into().unwrap(),
+            main_key: BitcoinKey::new_private(&result[..32])?,
         };
         master_raw_ext_key.expand(path)
     }
@@ -265,13 +258,17 @@ impl RawExtendedKey {
         Self::secret_from_enthropy(enthropy, path).map(|ext_priv_key| ext_priv_key.ext_pub())
     }
 
-    pub fn child_key_pair(&self, index: u32) -> Result<([u8; 33], Option<[u8; 32]>), BIP32Error> {
+    pub fn child_key_pair(
+        &self,
+        index: u32,
+    ) -> Result<(BitcoinKey, Option<BitcoinKey>), BIP32Error> {
         let child_no = self.expand(&[index])?;
         match child_no.main_key {
-            KeyBytes::Private(priv_key) => {
-                Ok((child_no.main_key.as_public_bytes(), Some(priv_key)))
-            }
-            KeyBytes::Public(pub_key) => Ok((pub_key, None)),
+            BitcoinKey::Private(_) => Ok((
+                child_no.main_key.as_public(),
+                Some(child_no.main_key),
+            )),
+            BitcoinKey::Public(_) => Ok((child_no.main_key, None)),
         }
     }
 }
