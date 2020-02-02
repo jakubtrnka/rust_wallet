@@ -1,4 +1,4 @@
-use crate::addresses::AddressFormat;
+use crate::addresses::{LegacyAddress, Wif};
 use crate::{base58, bip32};
 const SEED: [u8; 16] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -166,25 +166,45 @@ fn test_bip32_address_generation() {
     .unwrap()
     .expand(&[0x8000_0000])
     .unwrap();
-    let (pub_key, _priv_key) = bip32_ext_key.child_key_pair(0).unwrap();
+    let (pub_key, priv_key) = bip32_ext_key.child_key_pair(0).unwrap();
+    let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
+    let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());
     assert_eq!(
-        AddressFormat::LegacyMainnet.from_public_key(&pub_key.serialize_public()),
+        from_priv.addr(),
         String::from("1JMVQY2WnKG4VRX4M7TnEBWW7uwx64v4sd"),
     );
-    let (pub_key, _priv_key) = bip32_ext_key.child_key_pair(1332).unwrap();
     assert_eq!(
-        AddressFormat::LegacyMainnet.from_public_key(&pub_key.serialize_public()),
+        from_pub.addr(),
+        String::from("1JMVQY2WnKG4VRX4M7TnEBWW7uwx64v4sd"),
+    );
+
+    let (pub_key, priv_key) = bip32_ext_key.child_key_pair(1332).unwrap();
+    let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
+    let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());
+    assert_eq!(
+        from_priv.addr(),
         String::from("1N9c7fqJDvtbr4bAsWtqpzoLM84vsFrnep"),
     );
+    assert_eq!(
+        from_pub.addr(),
+        String::from("1N9c7fqJDvtbr4bAsWtqpzoLM84vsFrnep"),
+    );
+
     let bip32_ext_key = bip32::Bip32ExtendedKey::parse_from_bytes(
         base58::base58_to_bytes(priv_str).unwrap().as_slice(),
     )
     .unwrap()
     .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
     .unwrap();
-    let (pub_key, _priv_key) = bip32_ext_key.child_key_pair(1).unwrap();
+    let (pub_key, priv_key) = bip32_ext_key.child_key_pair(1).unwrap();
+    let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
+    let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());
     assert_eq!(
-        AddressFormat::LegacyMainnet.from_public_key(&pub_key.serialize_public()),
+        from_priv.addr(),
+        String::from("17AqJq66ud4zczFS3rNuxWABU6SiMBBnpH"),
+    );
+    assert_eq!(
+        from_pub.addr(),
         String::from("17AqJq66ud4zczFS3rNuxWABU6SiMBBnpH"),
     );
 }

@@ -20,7 +20,6 @@ pub enum KeyError {
 impl Error for KeyError {}
 impl Display for KeyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        //        write!(f, "{:?}", self)
         f.write_str(self.to_string().as_str())
     }
 }
