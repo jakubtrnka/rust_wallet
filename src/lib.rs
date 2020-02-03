@@ -1,5 +1,6 @@
 pub mod addresses;
 pub mod base58;
+pub mod bech32;
 pub mod bip32;
 pub mod bitcoin_keys;
 pub mod hashes;
