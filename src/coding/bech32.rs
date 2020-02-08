@@ -1,6 +1,5 @@
 /// source: Reference implementation of BIP173
 /// https://github.com/sipa/bech32/blob/4ec94646bebb3ee8932cb251ad80d98822872e87/ref/rust/src/bech32.rs
-
 use super::CodingError;
 
 /// Grouping structure for the human-readable part and the data part
@@ -10,7 +9,7 @@ pub struct Bech32 {
     /// Human-readable part
     pub hrp: String,
     /// Data payload
-    pub data: Vec<u8>
+    pub data: Vec<u8>,
 }
 
 // Human-readable part and data part separator
@@ -18,22 +17,18 @@ const SEP: char = '1';
 
 // Encoding character set. Maps data value -> char
 const CHARSET: [char; 32] = [
-    'q','p','z','r','y','9','x','8',
-    'g','f','2','t','v','d','w','0',
-    's','3','j','n','5','4','k','h',
-    'c','e','6','m','u','a','7','l'
+    'q', 'p', 'z', 'r', 'y', '9', 'x', '8', 'g', 'f', '2', 't', 'v', 'd', 'w', '0', 's', '3', 'j',
+    'n', '5', '4', 'k', 'h', 'c', 'e', '6', 'm', 'u', 'a', '7', 'l',
 ];
 
 // Reverse character set. Maps ASCII byte -> CHARSET index on [0,31]
 const CHARSET_REV: [i8; 128] = [
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    15, -1, 10, 17, 21, 20, 26, 30,  7,  5, -1, -1, -1, -1, -1, -1,
-    -1, 29, -1, 24, 13, 25,  9,  8, 23, -1, 18, 22, 31, 27, 19, -1,
-     1,  0,  3, 16, 11, 28, 12, 14,  6,  4,  2, -1, -1, -1, -1, -1,
-    -1, 29, -1, 24, 13, 25,  9,  8, 23, -1, 18, 22, 31, 27, 19, -1,
-     1,  0,  3, 16, 11, 28, 12, 14,  6,  4,  2, -1, -1, -1, -1, -1
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    15, -1, 10, 17, 21, 20, 26, 30, 7, 5, -1, -1, -1, -1, -1, -1, -1, 29, -1, 24, 13, 25, 9, 8, 23,
+    -1, 18, 22, 31, 27, 19, -1, 1, 0, 3, 16, 11, 28, 12, 14, 6, 4, 2, -1, -1, -1, -1, -1, -1, 29,
+    -1, 24, 13, 25, 9, 8, 23, -1, 18, 22, 31, 27, 19, -1, 1, 0, 3, 16, 11, 28, 12, 14, 6, 4, 2, -1,
+    -1, -1, -1, -1,
 ];
 
 type EncodeResult = Result<String, CodingError>;
@@ -43,7 +38,7 @@ impl Bech32 {
     /// Encode as a string
     pub fn to_string(&self) -> EncodeResult {
         if self.hrp.len() < 1 {
-            return Err(CodingError::InvalidLength)
+            return Err(CodingError::InvalidLength);
         }
         let hrp_bytes: Vec<u8> = self.hrp.clone().into_bytes();
         let mut combined: Vec<u8> = self.data.clone();
@@ -51,7 +46,7 @@ impl Bech32 {
         let mut encoded: String = format!("{}{}", self.hrp, SEP);
         for p in combined {
             if p >= 32 {
-                return Err(CodingError::InvalidData)
+                return Err(CodingError::InvalidData);
             }
             encoded.push(CHARSET[p as usize]);
         }
@@ -63,12 +58,12 @@ impl Bech32 {
         // Ensure overall length is within bounds
         let len: usize = s.len();
         if len < 8 || len > 90 {
-            return Err(CodingError::InvalidLength)
+            return Err(CodingError::InvalidLength);
         }
 
         // Check for missing separator
         if s.find(SEP).is_none() {
-            return Err(CodingError::MissingSeparator)
+            return Err(CodingError::MissingSeparator);
         }
 
         // Split at separator and check for two pieces
@@ -76,7 +71,7 @@ impl Bech32 {
         let raw_hrp = parts[1];
         let raw_data = parts[0];
         if raw_hrp.len() < 1 || raw_data.len() < 6 {
-            return Err(CodingError::InvalidLength)
+            return Err(CodingError::InvalidLength);
         }
 
         let mut has_lower: bool = false;
@@ -85,7 +80,7 @@ impl Bech32 {
         for b in raw_hrp.bytes() {
             // Valid subset of ASCII
             if b < 33 || b > 126 {
-                return Err(CodingError::InvalidChar)
+                return Err(CodingError::InvalidChar);
             }
             let mut c = b;
             // Lowercase
@@ -96,7 +91,7 @@ impl Bech32 {
             if b >= b'A' && b <= b'Z' {
                 has_upper = true;
                 // Convert to lowercase
-                c = b + (b'a'-b'A');
+                c = b + (b'a' - b'A');
             }
             hrp_bytes.push(c);
         }
@@ -106,11 +101,11 @@ impl Bech32 {
         for b in raw_data.bytes() {
             // Aphanumeric only
             if !((b >= b'0' && b <= b'9') || (b >= b'A' && b <= b'Z') || (b >= b'a' && b <= b'z')) {
-                return Err(CodingError::InvalidChar)
+                return Err(CodingError::InvalidChar);
             }
             // Excludes these characters: [1,b,i,o]
             if b == b'1' || b == b'b' || b == b'i' || b == b'o' {
-                return Err(CodingError::InvalidChar)
+                return Err(CodingError::InvalidChar);
             }
             // Lowercase
             if b >= b'a' && b <= b'z' {
@@ -121,19 +116,19 @@ impl Bech32 {
             if b >= b'A' && b <= b'Z' {
                 has_upper = true;
                 // Convert to lowercase
-                c = b + (b'a'-b'A');
+                c = b + (b'a' - b'A');
             }
             data_bytes.push(CHARSET_REV[c as usize] as u8);
         }
 
         // Ensure no mixed case
         if has_lower && has_upper {
-            return Err(CodingError::MixedCase)
+            return Err(CodingError::MixedCase);
         }
 
         // Ensure checksum
         if !verify_checksum(&hrp_bytes, &data_bytes) {
-            return Err(CodingError::InvalidChecksum)
+            return Err(CodingError::InvalidChecksum);
         }
 
         // Remove checksum from data payload
@@ -142,7 +137,7 @@ impl Bech32 {
 
         Ok(Bech32 {
             hrp: String::from_utf8(hrp_bytes).unwrap(),
-            data: data_bytes
+            data: data_bytes,
         })
     }
 }

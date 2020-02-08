@@ -1,4 +1,4 @@
-use crate::base58::bytes_to_base58;
+use crate::coding::bytes_to_base58;
 use crate::hashes::{hash160, sha256d};
 
 use super::copy_to_offset;

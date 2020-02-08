@@ -1,5 +1,7 @@
 use crate::addresses::{LegacyAddress, Wif};
-use crate::{base58, bip32};
+use crate::bip32;
+use crate::coding::*;
+
 const SEED: [u8; 16] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 ];
@@ -8,8 +10,8 @@ const SEED: [u8; 16] = [
 fn test_ext_keys_from_seed_0() {
     let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[]).unwrap();
     let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[]).unwrap();
-    let xpriv = base58::bytes_to_base58(&private_key);
-    let xpub = base58::bytes_to_base58(&public_key);
+    let xpriv = bytes_to_base58(&private_key);
+    let xpub = bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsef\
@@ -25,14 +27,14 @@ fn test_ext_keys_from_seed_0() {
 #[test]
 fn test_ext_keys_from_seed_1() {
     let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000]).unwrap();
-    let xpub = base58::bytes_to_base58(&public_key);
+    let xpub = bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bg\
          wQ9xv5ski8PX9rL2dZXvgGDnw"
     );
     let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000]).unwrap();
-    let xpriv = base58::bytes_to_base58(&private_key);
+    let xpriv = bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
         "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCesnDYUhd7oWgT11\
@@ -43,14 +45,14 @@ fn test_ext_keys_from_seed_1() {
 #[test]
 fn test_ext_keys_from_seed_2() {
     let public_key = bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]).unwrap();
-    let xpub = base58::bytes_to_base58(&public_key);
+    let xpub = bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq52\
          7Hqck2AxYysAA7xmALppuCkwQ"
     );
     let private_key = bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1]).unwrap();
-    let xpriv = base58::bytes_to_base58(&private_key);
+    let xpriv = bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
         "xprv9wTYmMFdV23N2TdNG573QoEsfRrWKQgWeibmLntzniatZvR9BmLnvSxqu53Kw1UmYPxLgboyZQaXwTCg8M\
@@ -62,7 +64,7 @@ fn test_ext_keys_from_seed_2() {
 fn test_ext_keys_from_seed_3() {
     let public_key =
         bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]).unwrap();
-    let xpub = base58::bytes_to_base58(&public_key);
+    let xpub = bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4\
@@ -70,7 +72,7 @@ fn test_ext_keys_from_seed_3() {
     );
     let private_key =
         bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002]).unwrap();
-    let xpriv = base58::bytes_to_base58(&private_key);
+    let xpriv = bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
         "xprv9z4pot5VBttmtdRTWfWQmoH1taj2axGVzFqSb8C9xaxKymcFzXBDptWmT7FwuEzG3ryjH4ktypQSAewRiNMjAN\
@@ -82,7 +84,7 @@ fn test_ext_keys_from_seed_3() {
 fn test_ext_keys_from_seed_4() {
     let public_key =
         bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]).unwrap();
-    let xpub = base58::bytes_to_base58(&public_key);
+    let xpub = bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub6FHa3pjLCk84BayeJxFW2SP4XRrFd1JYnxeLeU8EqN3vDfZmbqBqaGJAyiLjTAwm6ZLRQUMv1ZACTj37sR62cf\
@@ -90,7 +92,7 @@ fn test_ext_keys_from_seed_4() {
     );
     let private_key =
         bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2]).unwrap();
-    let xpriv = base58::bytes_to_base58(&private_key);
+    let xpriv = bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
         "xprvA2JDeKCSNNZky6uBCviVfJSKyQ1mDYahRjijr5idH2WwLsEd4Hsb2Tyh8RfQMuPh7f7RtyzTtdrbdqqsunu5Mm\
@@ -103,7 +105,7 @@ fn test_ext_keys_from_seed_5() {
     let public_key =
         bip32::public_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000])
             .unwrap();
-    let xpub = base58::bytes_to_base58(&public_key);
+    let xpub = bytes_to_base58(&public_key);
     assert_eq!(
         xpub,
         "xpub6H1LXWLaKsWFhvm6RVpEL9P4KfRZSW7abD2ttkWP3SSQvnyA8FSVqNTEcYFgJS2UaFcxupHiYkro49S8yGasTv\
@@ -112,7 +114,7 @@ fn test_ext_keys_from_seed_5() {
     let private_key =
         bip32::secret_ext_key_from_enthropy(&SEED, &[0x8000_0000, 1, 0x8000_0002, 2, 10_0000_0000])
             .unwrap();
-    let xpriv = base58::bytes_to_base58(&private_key);
+    let xpriv = bytes_to_base58(&private_key);
     assert_eq!(
         xpriv,
         "xprvA41z7zogVVwxVSgdKUHDy1SKmdb533PjDz7J6N6mV6uS3ze1ai8FHa8kmHScGpWmj4WggLyQjgPie1rFSruoUi\
@@ -126,12 +128,11 @@ fn test_deserialization_serialization_1() {
                    TFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
     let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCes\
                     nDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7";
-    let deserialized_priv_key = bip32::Bip32ExtendedKey::parse_from_bytes(
-        base58::base58_to_bytes(priv_str).unwrap().as_slice(),
-    )
-    .unwrap();
+    let deserialized_priv_key =
+        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+            .unwrap();
     assert_eq!(
-        base58::bytes_to_base58(&deserialized_priv_key.ext_pub().serialize()),
+        bytes_to_base58(&deserialized_priv_key.ext_pub().serialize()),
         pub_str.to_owned()
     );
 }
@@ -141,7 +142,7 @@ fn test_deserialization_serialization_1() {
 fn test_bad_checksum_deserialization_1() {
     let pub_str = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsf\
                    TFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnx";
-    bip32::Bip32ExtendedKey::parse_from_bytes(base58::base58_to_bytes(pub_str).unwrap().as_slice())
+    bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(pub_str).unwrap().as_slice())
         .expect("Should fail");
 }
 
@@ -150,22 +151,19 @@ fn test_bad_checksum_deserialization_1() {
 fn test_bad_checksum_deserialization_2() {
     let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCes\
                     nDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ8";
-    bip32::Bip32ExtendedKey::parse_from_bytes(
-        base58::base58_to_bytes(priv_str).unwrap().as_slice(),
-    )
-    .expect("Should fail");
+    bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+        .expect("Should fail");
 }
 
 #[test]
 fn test_bip32_address_generation() {
     let priv_str = "xprv9s21ZrQH143K4Kbiy5aZxuQiufMZwNN2L9Txo8apuYEDm1LPMGVnu3GEsMusLwX1cZuto\
                     XWfg2UXuUmKx1mtj4tj9oejzMfcdNQCLNLjq4u";
-    let bip32_ext_key = bip32::Bip32ExtendedKey::parse_from_bytes(
-        base58::base58_to_bytes(priv_str).unwrap().as_slice(),
-    )
-    .unwrap()
-    .expand(&[0x8000_0000])
-    .unwrap();
+    let bip32_ext_key =
+        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+            .unwrap()
+            .expand(&[0x8000_0000])
+            .unwrap();
     let (pub_key, priv_key) = bip32_ext_key.child_key_pair(0).unwrap();
     let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
     let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());
@@ -190,12 +188,11 @@ fn test_bip32_address_generation() {
         String::from("1N9c7fqJDvtbr4bAsWtqpzoLM84vsFrnep"),
     );
 
-    let bip32_ext_key = bip32::Bip32ExtendedKey::parse_from_bytes(
-        base58::base58_to_bytes(priv_str).unwrap().as_slice(),
-    )
-    .unwrap()
-    .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
-    .unwrap();
+    let bip32_ext_key =
+        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+            .unwrap()
+            .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
+            .unwrap();
     let (pub_key, priv_key) = bip32_ext_key.child_key_pair(1).unwrap();
     let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
     let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());

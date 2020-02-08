@@ -1,5 +1,7 @@
 use std::iter::FromIterator;
 
+use super::CodingError;
+
 const ABC: [char; 58] = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
     'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e',
@@ -27,9 +29,9 @@ pub fn bytes_to_base58(bytes: &[u8]) -> String {
     String::from_iter(output.iter().rev().map(|c| ABC[*c as usize]))
 }
 
-pub fn base58_to_bytes(code: &str) -> Result<Vec<u8>, &'static str> {
+pub fn base58_to_bytes(code: &str) -> Result<Vec<u8>, CodingError> {
     if !code.is_ascii() {
-        return Err("Non-ascii characters");
+        return Err(CodingError::InvalidChar);
     }
     let digits = code
         .chars()
@@ -39,7 +41,7 @@ pub fn base58_to_bytes(code: &str) -> Result<Vec<u8>, &'static str> {
     let mut output = Vec::<u32>::with_capacity(digits.len());
     for &opt_word in digits.iter() {
         match opt_word {
-            None => return Err("Invalid character"),
+            None => return Err(CodingError::InvalidChar),
             Some(word) => {
                 let mut carry: u16 = word as u16;
                 for digit in output.iter_mut() {
