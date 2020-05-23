@@ -1,7 +1,6 @@
 use std::convert::TryInto;
 use std::error::Error;
 
-use crate::bitcoin_keys::KeyError::{InvalidPublicBytes, UnsupportedOperation};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use std::fmt::{Display, Formatter};
 
@@ -29,10 +28,28 @@ impl KeyPair {
         });
         Self(validated_pub, validated_priv)
     }
+
+    pub fn get_public(&self) -> &BitcoinKey {
+        &self.0
+    }
+
+    pub fn get_private(&self) -> Option<&BitcoinKey> {
+        self.1.as_ref()
+    }
+}
+
+impl From<BitcoinKey> for KeyPair {
+    fn from(value: BitcoinKey) -> Self {
+        match value {
+            BitcoinKey::Public(_) => Self::new(value, None),
+            BitcoinKey::Private(_) => Self::new(value.as_public(), Some(value)),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum KeyError {
+    General,
     InvalidPublicBytes,
     InvalidPrivateBytes,
     UnsupportedOperation,
@@ -46,12 +63,12 @@ impl Display for KeyError {
 
 impl BitcoinKey {
     pub fn new_public(key: &[u8]) -> Result<Self, KeyError> {
-        let public_key = PublicKey::from_slice(key).map_err(|_e| InvalidPublicBytes)?;
+        let public_key = PublicKey::from_slice(key).map_err(|_e| KeyError::InvalidPublicBytes)?;
         Ok(Self::Public(public_key))
     }
 
     pub fn new_private(key: &[u8]) -> Result<Self, KeyError> {
-        let secret = SecretKey::from_slice(key).map_err(|_e| InvalidPublicBytes)?;
+        let secret = SecretKey::from_slice(key).map_err(|_e| KeyError::InvalidPublicBytes)?;
         Ok(Self::Private(secret))
     }
 
@@ -64,7 +81,7 @@ impl BitcoinKey {
 
     pub fn serialize_private(&self) -> Result<[u8; 32], KeyError> {
         match self {
-            Self::Public(_) => Err(UnsupportedOperation),
+            Self::Public(_) => Err(KeyError::UnsupportedOperation),
             Self::Private(x) => Ok(x[..].try_into().unwrap()),
         }
     }
