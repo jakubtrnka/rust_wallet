@@ -5,14 +5,14 @@ use super::copy_to_offset;
 
 use crate::bitcoin_keys::BitcoinKey;
 
-pub struct LegacyAddress(pub String, pub Option<String>);
+pub struct P2PKHAddress(String, Option<String>);
 
 pub trait Wif {
     fn addr(&self) -> String;
     fn secret(&self) -> Option<String>;
 }
 
-impl LegacyAddress {
+impl P2PKHAddress {
     pub fn new_addr_key_pair(key: &BitcoinKey) -> Self {
         let mut tmp = [0u8; 38];
 
@@ -34,7 +34,7 @@ impl LegacyAddress {
         Self(output_address, output_priv_key_wif)
     }
 }
-impl Wif for LegacyAddress {
+impl Wif for P2PKHAddress {
     fn addr(&self) -> String {
         self.0.clone()
     }
@@ -49,7 +49,7 @@ mod test {
 
     #[test]
     fn pub_key_to_address() {
-        let legacy_mainnet = LegacyAddress::new_addr_key_pair(
+        let legacy_mainnet = P2PKHAddress::new_addr_key_pair(
             &BitcoinKey::new_public(&[
                 0x03, 0x57, 0xd6, 0x47, 0x92, 0xe1, 0xbd, 0xa1, 0x16, 0xf7, 0x66, 0xb2, 0x4b, 0x61,
                 0xfa, 0x78, 0xe9, 0xef, 0x8d, 0xb6, 0x11, 0x84, 0xb2, 0x77, 0x0a, 0xae, 0x1b, 0xda,
@@ -72,7 +72,7 @@ mod test {
             0x00, 0x00, 0x00, 0x01,
         ])
         .unwrap();
-        let wif = LegacyAddress::new_addr_key_pair(&raw_private);
+        let wif = P2PKHAddress::new_addr_key_pair(&raw_private);
         assert_eq!(
             wif.addr(),
             String::from("1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH")
@@ -91,7 +91,7 @@ mod test {
             0x58, 0xff, 0xd2, 0x57,
         ])
         .unwrap();
-        let wif = LegacyAddress::new_addr_key_pair(&raw_private);
+        let wif = P2PKHAddress::new_addr_key_pair(&raw_private);
         assert_eq!(
             wif.addr(),
             String::from("1ZKVFRnWgnMBXsoqpt773GugWkraC8xZo")

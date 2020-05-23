@@ -34,7 +34,7 @@ const CHARSET_REV: [i8; 128] = [
 impl Bech32 {
     /// Encode as a string
     pub fn to_string(&self) -> Result<String> {
-        if self.hrp.len() < 1 {
+        if self.hrp.is_empty() {
             return Err(CodingError::InvalidLength);
         }
         let hrp_bytes: Vec<u8> = self.hrp.clone().into_bytes();
@@ -67,7 +67,7 @@ impl Bech32 {
         let parts: Vec<&str> = s.rsplitn(2, SEP).collect();
         let raw_hrp = parts[1];
         let raw_data = parts[0];
-        if raw_hrp.len() < 1 || raw_data.len() < 6 {
+        if raw_hrp.is_empty() || raw_data.len() < 6 {
             return Err(CodingError::InvalidLength);
         }
 
@@ -79,17 +79,18 @@ impl Bech32 {
             if b < 33 || b > 126 {
                 return Err(CodingError::InvalidChar);
             }
-            let mut c = b;
             // Lowercase
             if b >= b'a' && b <= b'z' {
                 has_lower = true;
             }
             // Uppercase
-            if b >= b'A' && b <= b'Z' {
+            let c = if b >= b'A' && b <= b'Z' {
                 has_upper = true;
                 // Convert to lowercase
-                c = b + (b'a' - b'A');
-            }
+                b + (b'a' - b'A')
+            } else {
+                b
+            };
             hrp_bytes.push(c);
         }
 
@@ -108,13 +109,13 @@ impl Bech32 {
             if b >= b'a' && b <= b'z' {
                 has_lower = true;
             }
-            let mut c = b;
             // Uppercase
-            if b >= b'A' && b <= b'Z' {
+            let c = if b >= b'A' && b <= b'Z' {
                 has_upper = true;
-                // Convert to lowercase
-                c = b + (b'a' - b'A');
-            }
+                b + (b'a' - b'A')
+            } else {
+                b
+            };
             data_bytes.push(CHARSET_REV[c as usize] as u8);
         }
 
@@ -139,7 +140,7 @@ impl Bech32 {
     }
 }
 
-fn create_checksum(hrp: &Vec<u8>, data: &Vec<u8>) -> Vec<u8> {
+fn create_checksum(hrp: &[u8], data: &[u8]) -> Vec<u8> {
     let mut values: Vec<u8> = hrp_expand(hrp);
     values.extend_from_slice(data);
     // Pad with 6 zeros
@@ -147,18 +148,18 @@ fn create_checksum(hrp: &Vec<u8>, data: &Vec<u8>) -> Vec<u8> {
     let plm: u32 = polymod(values) ^ 1;
     let mut checksum: Vec<u8> = Vec::new();
     for p in 0..6 {
-        checksum.push(((plm >> 5 * (5 - p)) & 0x1f) as u8);
+        checksum.push((plm >> (5 * (5 - p)) & 0x1f) as u8);
     }
     checksum
 }
 
-fn verify_checksum(hrp: &Vec<u8>, data: &Vec<u8>) -> bool {
+fn verify_checksum(hrp: &[u8], data: &[u8]) -> bool {
     let mut exp = hrp_expand(hrp);
     exp.extend_from_slice(data);
     polymod(exp) == 1u32
 }
 
-fn hrp_expand(hrp: &Vec<u8>) -> Vec<u8> {
+fn hrp_expand(hrp: &[u8]) -> Vec<u8> {
     let mut v: Vec<u8> = Vec::new();
     for b in hrp {
         v.push(*b >> 5);
@@ -171,16 +172,22 @@ fn hrp_expand(hrp: &Vec<u8>) -> Vec<u8> {
 }
 
 // Generator coefficients
-const GEN: [u32; 5] = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+const GEN: [u32; 5] = [
+    0x3b6a_57b2,
+    0x2650_8e6d,
+    0x1ea1_19fa,
+    0x3d42_33dd,
+    0x2a14_62b3,
+];
 
 fn polymod(values: Vec<u8>) -> u32 {
     let mut chk: u32 = 1;
     let mut b: u8;
     for v in values {
         b = (chk >> 25) as u8;
-        chk = (chk & 0x1ffffff) << 5 ^ (v as u32);
-        for i in 0..5 {
-            if (b >> i) & 1 == 1 {
+        chk = (chk & 0x01ff_ffff) << 5 ^ (v as u32);
+        for (i, _) in GEN.iter().enumerate() {
+            if (b >> i as u8) & 1 == 1 {
                 chk ^= GEN[i]
             }
         }

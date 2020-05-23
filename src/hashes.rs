@@ -1,4 +1,3 @@
-use ripemd160;
 use ripemd160::Ripemd160;
 use sha2::{Digest, Sha256};
 

@@ -1,4 +1,4 @@
-use crate::addresses::{LegacyAddress, Wif};
+use crate::addresses::{P2PKHAddress, Wif};
 use crate::bip32;
 use crate::coding::*;
 
@@ -165,8 +165,8 @@ fn test_bip32_address_generation() {
             .expand(&[0x8000_0000])
             .unwrap();
     let (pub_key, priv_key) = bip32_ext_key.child_key_pair(0).unwrap();
-    let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
-    let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());
+    let from_pub = P2PKHAddress::new_addr_key_pair(&pub_key);
+    let from_priv = P2PKHAddress::new_addr_key_pair(&priv_key.unwrap());
     assert_eq!(
         from_priv.addr(),
         String::from("1JMVQY2WnKG4VRX4M7TnEBWW7uwx64v4sd"),
@@ -177,8 +177,8 @@ fn test_bip32_address_generation() {
     );
 
     let (pub_key, priv_key) = bip32_ext_key.child_key_pair(1332).unwrap();
-    let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
-    let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());
+    let from_pub = P2PKHAddress::new_addr_key_pair(&pub_key);
+    let from_priv = P2PKHAddress::new_addr_key_pair(&priv_key.unwrap());
     assert_eq!(
         from_priv.addr(),
         String::from("1N9c7fqJDvtbr4bAsWtqpzoLM84vsFrnep"),
@@ -194,8 +194,8 @@ fn test_bip32_address_generation() {
             .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
             .unwrap();
     let (pub_key, priv_key) = bip32_ext_key.child_key_pair(1).unwrap();
-    let from_pub = LegacyAddress::new_addr_key_pair(&pub_key);
-    let from_priv = LegacyAddress::new_addr_key_pair(&priv_key.unwrap());
+    let from_pub = P2PKHAddress::new_addr_key_pair(&pub_key);
+    let from_priv = P2PKHAddress::new_addr_key_pair(&priv_key.unwrap());
     assert_eq!(
         from_priv.addr(),
         String::from("17AqJq66ud4zczFS3rNuxWABU6SiMBBnpH"),
