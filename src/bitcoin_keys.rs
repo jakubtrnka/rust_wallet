@@ -11,6 +11,26 @@ pub enum BitcoinKey {
     Private(secp256k1::SecretKey),
 }
 
+pub struct KeyPair(BitcoinKey, Option<BitcoinKey>);
+
+impl KeyPair {
+    pub fn new(public: BitcoinKey, private: Option<BitcoinKey>) -> Self {
+        let validated_pub = if let BitcoinKey::Public(pub_key) = public {
+            BitcoinKey::Public(pub_key)
+        } else {
+            panic!("Supplied key is not public key");
+        };
+        let validated_priv = private.map(|maybe_private| {
+            if let BitcoinKey::Private(priv_key) = maybe_private {
+                BitcoinKey::Private(priv_key)
+            } else {
+                panic!("Supplied key is not private key");
+            }
+        });
+        Self(validated_pub, validated_priv)
+    }
+}
+
 #[derive(Debug)]
 pub enum KeyError {
     InvalidPublicBytes,
