@@ -1,6 +1,6 @@
 /// source: Reference implementation of BIP173
 /// https://github.com/sipa/bech32/blob/4ec94646bebb3ee8932cb251ad80d98822872e87/ref/rust/src/bech32.rs
-use super::CodingError;
+use super::{CodingError, Result};
 
 /// Grouping structure for the human-readable part and the data part
 /// of decoded Bech32 string.
@@ -31,12 +31,9 @@ const CHARSET_REV: [i8; 128] = [
     -1, -1, -1, -1,
 ];
 
-type EncodeResult = Result<String, CodingError>;
-type DecodeResult = Result<Bech32, CodingError>;
-
 impl Bech32 {
     /// Encode as a string
-    pub fn to_string(&self) -> EncodeResult {
+    pub fn to_string(&self) -> Result<String> {
         if self.hrp.len() < 1 {
             return Err(CodingError::InvalidLength);
         }
@@ -54,7 +51,7 @@ impl Bech32 {
     }
 
     /// Decode from a string
-    pub fn from_string(s: String) -> DecodeResult {
+    pub fn from_string(s: &str) -> Result<Bech32> {
         // Ensure overall length is within bounds
         let len: usize = s.len();
         if len < 8 || len > 90 {
@@ -189,4 +186,64 @@ fn polymod(values: Vec<u8>) -> u32 {
         }
     }
     chk
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bch_vectors() {
+        let valid_code_1 = "A12UEL5L";
+        let valid_code_2 = "a12uel5l";
+        let valid_code_3 = concat!(
+            "an83characterlonghumanreadablepartthatcontainsthenumber1andth",
+            "eexcludedcharactersbio1tt5tgs"
+        );
+        let valid_code_4 = "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw";
+        let valid_code_5 = concat!(
+            "11qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+            "qqqqqqqqqqqqqqqqqqqqqqqc8247j"
+        );
+        let valid_code_6 = "split1checkupstagehandshakeupstreamerranterredcaperred2y9e3w";
+
+        let invalid_code_1 = "abcdef1qqzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw";
+        let invalid_code_2 = "abcdef1qPZRy9x8gf2tvdw0s3jn54khce6mua7lmqqqxw";
+        let invalid_code_3 = concat!(
+            "abcdef1qpzry9x8gf2tvdw0s3jn54khce66mua7lmqqqxwwmua7lmqqqmua7lmqqqxw",
+            "abcdef1qpzry9x8gf2tvdw0s3jn54khce66mua7lmqqqxwwmua7lmqqqmua7lmqqqxw",
+            "abcdef1qpzry9x8gf2tvdw0s3jn54khce66mua7lmqqqxwwmua7lmqqqmua7lmqqqxw",
+            "abcdef1qpzry9x8gf2tvdw0s3jn54khce66mua7lmqqqxwwmua7lmqqqmua7lmqqqxw",
+        );
+        let invalid_code_4 = "a12ul";
+        let invalid_code_5 = "abcdef1qpzry9x8g#2tvdw0s3jn54khce6mua7lmqqqxw";
+
+        assert_eq!(
+            Bech32::from_string(invalid_code_1).unwrap_err(),
+            CodingError::InvalidChecksum
+        );
+        assert_eq!(
+            Bech32::from_string(invalid_code_2).unwrap_err(),
+            CodingError::MixedCase
+        );
+        assert_eq!(
+            Bech32::from_string(invalid_code_3).unwrap_err(),
+            CodingError::InvalidLength
+        );
+        assert_eq!(
+            Bech32::from_string(invalid_code_4).unwrap_err(),
+            CodingError::InvalidLength
+        );
+        assert_eq!(
+            Bech32::from_string(invalid_code_5).unwrap_err(),
+            CodingError::InvalidChar
+        );
+
+        Bech32::from_string(valid_code_1).unwrap();
+        Bech32::from_string(valid_code_2).unwrap();
+        Bech32::from_string(valid_code_3).unwrap();
+        Bech32::from_string(valid_code_4).unwrap();
+        Bech32::from_string(valid_code_5).unwrap();
+        Bech32::from_string(valid_code_6).unwrap();
+    }
 }

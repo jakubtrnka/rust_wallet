@@ -20,3 +20,5 @@ pub enum CodingError {
     /// The whole string must be of one case
     MixedCase,
 }
+
+pub type Result<T> = std::result::Result<T, CodingError>;
