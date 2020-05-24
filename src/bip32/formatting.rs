@@ -1,5 +1,3 @@
-use crate::bip32::Bip32ExtendedKey;
-
 pub(crate) trait BIP32Formatter {
     const PUBLIC_MAGIC: [u8; 4];
     const PRIVATE_MAGIC: [u8; 4];
@@ -13,8 +11,8 @@ impl BIP32Formatter for MainnetP2PKHFormatter {
 
 pub(crate) struct TestnetP2PKHFormatter;
 impl BIP32Formatter for TestnetP2PKHFormatter {
-    const PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
-    const PRIVATE_MAGIC: [u8; 4] = [0x04, 0x88, 0xad, 0xe4];
+    const PUBLIC_MAGIC: [u8; 4] = [0x04, 0x35, 0x87, 0xcf];
+    const PRIVATE_MAGIC: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
 }
 
 pub(crate) struct MainnetBIP84Formatter;

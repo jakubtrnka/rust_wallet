@@ -8,8 +8,7 @@ use std::fmt::{Display, Formatter};
 
 use super::copy_to_offset;
 use crate::bip32::BIP32Error::Secp256k1Error;
-use crate::bitcoin_keys::{BitcoinKey, KeyError};
-use crate::NetworkType;
+use crate::bitcoin_keys::{BitcoinKey, KeyError, KeyPair};
 use formatting::*;
 
 #[derive(Debug)]
@@ -80,7 +79,7 @@ impl TryFrom<&[u8]> for Bip32ExtendedKey {
 }
 
 impl Bip32ExtendedKey {
-    pub(crate) fn encode<F: BIP32Formatter>(&self, formatter: F) -> [u8; 82] {
+    fn encode<F: BIP32Formatter>(&self, formatter: F) -> [u8; 82] {
         let mut output: [u8; 82] = [0; 82];
         match self.main_key {
             BitcoinKey::Private(_) => {
@@ -179,15 +178,13 @@ impl Bip32ExtendedKey {
     pub fn public_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<Self, BIP32Error> {
         Self::secret_from_enthropy(enthropy, path).map(|ext_priv_key| ext_priv_key.ext_pub())
     }
+}
 
-    pub fn child_key_pair(
-        &self,
-        index: u32,
-    ) -> Result<(BitcoinKey, Option<BitcoinKey>), BIP32Error> {
-        let child_no = self.expand(&[index])?;
-        match child_no.main_key {
-            BitcoinKey::Private(_) => Ok((child_no.main_key.as_public(), Some(child_no.main_key))),
-            BitcoinKey::Public(_) => Ok((child_no.main_key, None)),
+impl Into<KeyPair> for Bip32ExtendedKey {
+    fn into(self) -> KeyPair {
+        match self.main_key {
+            BitcoinKey::Private(_) => KeyPair::new(self.main_key.as_public(), Some(self.main_key)),
+            BitcoinKey::Public(_) => KeyPair::new(self.main_key, None),
         }
     }
 }
@@ -197,7 +194,7 @@ pub fn secret_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8
 }
 
 pub fn public_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8; 82], BIP32Error> {
-    Bip32ExtendedKey::public_from_enthropy(enthropy, path).map(|ext_key| ext_key.encode((MainnetP2PKHFormatter)))
+    Bip32ExtendedKey::public_from_enthropy(enthropy, path).map(|ext_key| ext_key.encode(MainnetP2PKHFormatter))
 }
 
 #[cfg(test)]
