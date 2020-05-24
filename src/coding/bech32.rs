@@ -225,9 +225,16 @@ mod test {
 
     #[test]
     fn test_base_to_base32_convertor() {
-
-        let lhs = vec! [0b1001_1100, 0b1110_1111, 0b0011_1001, 0b1100_1110, 0b0111_0011];
-        let rhs = vec![0b10011u8, 0b10011, 0b10111, 0b10011, 0b10011, 0b10011, 0b10011, 0b10011];
+        let lhs = vec![
+            0b1001_1100,
+            0b1110_1111,
+            0b0011_1001,
+            0b1100_1110,
+            0b0111_0011,
+        ];
+        let rhs = vec![
+            0b10011u8, 0b10011, 0b10111, 0b10011, 0b10011, 0b10011, 0b10011, 0b10011,
+        ];
 
         let new_lhs = bytes_to_32(&lhs);
         assert_eq!(new_lhs, rhs);

@@ -1,6 +1,8 @@
+mod formatting;
+
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -8,17 +10,13 @@ use super::copy_to_offset;
 use crate::bip32::BIP32Error::Secp256k1Error;
 use crate::bitcoin_keys::{BitcoinKey, KeyError};
 use crate::NetworkType;
-
-const MAINNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x88, 0xad, 0xe4];
-const MAINNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
-const TESTNET_PRIVATE_MAGIC: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
-const TESTNET_PUBLIC_MAGIC: [u8; 4] = [0x04, 0x35, 0x87, 0xcf];
+use formatting::*;
 
 #[derive(Debug)]
 pub enum BIP32Error {
     ExtendedKeyParseError(&'static str),
     KeyDerivationError(&'static str),
-    Secp256k1Error,
+    Secp256k1Error(String),
 }
 
 impl Error for BIP32Error {}
@@ -28,14 +26,13 @@ impl Display for BIP32Error {
     }
 }
 impl From<KeyError> for BIP32Error {
-    fn from(_e: KeyError) -> Self {
-        Secp256k1Error
+    fn from(e: KeyError) -> Self {
+        Secp256k1Error(e.to_string())
     }
 }
 
 #[derive(Clone)]
 pub struct Bip32ExtendedKey {
-    key_type: NetworkType,
     depth: u8,
     parent_fingerprint: [u8; 4],
     child_number: [u8; 4],
@@ -43,11 +40,27 @@ pub struct Bip32ExtendedKey {
     main_key: BitcoinKey,
 }
 
-impl Bip32ExtendedKey {
-    pub fn parse_from_bytes(bytes: &[u8]) -> Result<Self, BIP32Error> {
-        if bytes.len() != 82 {
+impl TryFrom<&[u8]> for Bip32ExtendedKey {
+    type Error = BIP32Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() < 82 {
             return Err(BIP32Error::ExtendedKeyParseError("Bad key length"));
         }
+        let mut identifier = [0u8; 4];
+        copy_to_offset(&mut identifier, 0, &bytes[0..4]);
+        let main_key = match identifier {
+            MainnetP2PKHFormatter::PRIVATE_MAGIC => BitcoinKey::new_private(&bytes[46..78]),
+            MainnetP2PKHFormatter::PUBLIC_MAGIC => BitcoinKey::new_public(&bytes[45..78]),
+            TestnetP2PKHFormatter::PRIVATE_MAGIC => BitcoinKey::new_private(&bytes[46..78]),
+            TestnetP2PKHFormatter::PUBLIC_MAGIC => BitcoinKey::new_public(&bytes[45..78]),
+            MainnetBIP84Formatter::PRIVATE_MAGIC => BitcoinKey::new_private(&bytes[46..78]),
+            MainnetBIP84Formatter::PUBLIC_MAGIC => BitcoinKey::new_public(&bytes[45..78]),
+            TestnetBIP84Formatter::PRIVATE_MAGIC => BitcoinKey::new_private(&bytes[46..78]),
+            TestnetBIP84Formatter::PUBLIC_MAGIC => BitcoinKey::new_public(&bytes[45..78]),
+            _ => return Err(BIP32Error::ExtendedKeyParseError("Invalid key")),
+        }?;
+
         let depth = bytes[4];
         let parent_fingerprint: [u8; 4] = bytes[5..9].try_into().unwrap();
         let child_number: [u8; 4] = bytes[9..13].try_into().unwrap();
@@ -56,31 +69,7 @@ impl Bip32ExtendedKey {
         if sha256d_checksum[0..4] != bytes[78..82] {
             return Err(BIP32Error::ExtendedKeyParseError("Bad checksum"));
         }
-        let (key_type, main_key) = match bytes[0..4].try_into().unwrap() {
-            MAINNET_PRIVATE_MAGIC => (
-                NetworkType::Mainnet,
-                BitcoinKey::new_private(&bytes[46..78]),
-            ),
-            TESTNET_PRIVATE_MAGIC => (
-                NetworkType::Testnet,
-                BitcoinKey::new_private(&bytes[46..78]),
-            ),
-            MAINNET_PUBLIC_MAGIC => {
-                let mut pub_bytes = [0u8; 33];
-                pub_bytes.copy_from_slice(&bytes[45..78]);
-                (NetworkType::Mainnet, BitcoinKey::new_public(&pub_bytes))
-            }
-            TESTNET_PUBLIC_MAGIC => {
-                let mut pub_bytes = [0u8; 33];
-                pub_bytes.copy_from_slice(&bytes[45..78]);
-                (NetworkType::Testnet, BitcoinKey::new_public(&pub_bytes))
-            }
-            _ => return Err(BIP32Error::ExtendedKeyParseError("Invalid key")),
-        };
-        let main_key =
-            main_key.map_err(|_| BIP32Error::ExtendedKeyParseError("Invalid key bytes"))?;
         Ok(Self {
-            key_type,
             depth,
             parent_fingerprint,
             child_number,
@@ -88,24 +77,18 @@ impl Bip32ExtendedKey {
             main_key,
         })
     }
+}
 
-    pub fn serialize(&self) -> [u8; 82] {
+impl Bip32ExtendedKey {
+    pub(crate) fn encode<F: BIP32Formatter>(&self, formatter: F) -> [u8; 82] {
         let mut output: [u8; 82] = [0; 82];
-        match (&self.key_type, &self.main_key) {
-            (NetworkType::Mainnet, BitcoinKey::Private(_)) => {
-                copy_to_offset(&mut output, 0, &MAINNET_PRIVATE_MAGIC);
+        match self.main_key {
+            BitcoinKey::Private(_) => {
+                copy_to_offset(&mut output, 0, &F::PRIVATE_MAGIC);
                 copy_to_offset(&mut output, 46, &self.main_key.serialize_private().unwrap());
             }
-            (NetworkType::Mainnet, BitcoinKey::Public(_)) => {
-                copy_to_offset(&mut output, 0, &MAINNET_PUBLIC_MAGIC);
-                copy_to_offset(&mut output, 45, &self.main_key.serialize_public());
-            }
-            (NetworkType::Testnet, BitcoinKey::Private(_)) => {
-                copy_to_offset(&mut output, 0, &TESTNET_PRIVATE_MAGIC);
-                copy_to_offset(&mut output, 46, &self.main_key.serialize_private().unwrap());
-            }
-            (NetworkType::Testnet, BitcoinKey::Public(_)) => {
-                copy_to_offset(&mut output, 0, &TESTNET_PUBLIC_MAGIC);
+            BitcoinKey::Public(_) => {
+                copy_to_offset(&mut output, 0, &F::PUBLIC_MAGIC);
                 copy_to_offset(&mut output, 45, &self.main_key.serialize_public());
             }
         };
@@ -170,7 +153,6 @@ impl Bip32ExtendedKey {
             let mut par_fpr = [0u8; 4];
             par_fpr.copy_from_slice(&result.2[0..4]);
             Ok(Bip32ExtendedKey {
-                key_type: self.key_type.clone(),
                 depth: self.depth + path.len() as u8,
                 parent_fingerprint: par_fpr,
                 child_number: path.last().unwrap().to_be_bytes(),
@@ -185,7 +167,6 @@ impl Bip32ExtendedKey {
         mac.input(enthropy);
         let result = mac.result().code();
         let master_raw_ext_key = Bip32ExtendedKey {
-            key_type: NetworkType::Mainnet,
             depth: 0,
             parent_fingerprint: [0, 0, 0, 0],
             child_number: [0, 0, 0, 0],
@@ -212,11 +193,11 @@ impl Bip32ExtendedKey {
 }
 
 pub fn secret_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8; 82], BIP32Error> {
-    Bip32ExtendedKey::secret_from_enthropy(enthropy, path).map(|ext_key| ext_key.serialize())
+    Bip32ExtendedKey::secret_from_enthropy(enthropy, path).map(|ext_key| ext_key.encode(MainnetP2PKHFormatter))
 }
 
 pub fn public_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8; 82], BIP32Error> {
-    Bip32ExtendedKey::public_from_enthropy(enthropy, path).map(|ext_key| ext_key.serialize())
+    Bip32ExtendedKey::public_from_enthropy(enthropy, path).map(|ext_key| ext_key.encode((MainnetP2PKHFormatter)))
 }
 
 #[cfg(test)]

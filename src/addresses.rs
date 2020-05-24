@@ -14,7 +14,6 @@ pub trait Wif {
 pub struct P2WPKHAddress(Bech32, Option<String>);
 
 impl Wif for P2WPKHAddress {
-
     fn from_key_pair(key_pair: &KeyPair) -> Self {
         let mut address_data = [0_u8; 21];
         let witness_program = hash160(&key_pair.get_public().serialize_public());
@@ -33,18 +32,13 @@ impl Wif for P2WPKHAddress {
             bytes_to_base58(&tmp)
         });
 
-        Self(
-            Bech32::new("bc", &address_data),
-            data
-        )
+        Self(Bech32::new("bc", &address_data), data)
     }
 
     fn address(&self) -> String {
         match self.0.to_string() {
             Ok(addr) => addr,
-            Err(e) => {
-                panic!("BUG: Bech32 address encoding failed: {:?}", e)
-            }
+            Err(e) => panic!("BUG: Bech32 address encoding failed: {:?}", e),
         }
     }
 

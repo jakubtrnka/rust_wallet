@@ -1,7 +1,9 @@
-use crate::addresses::{P2PKHAddress, Wif, P2WPKHAddress};
+use crate::addresses::{P2PKHAddress, P2WPKHAddress, Wif};
 use crate::bip32;
-use crate::coding::*;
 use crate::bitcoin_keys::KeyPair;
+use crate::coding::*;
+use std::convert::TryFrom;
+use crate::bip32::formatting::MainnetP2PKHFormatter;
 
 const SEED: [u8; 16] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -130,10 +132,10 @@ fn test_deserialization_serialization_1() {
     let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCes\
                     nDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7";
     let deserialized_priv_key =
-        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+        bip32::Bip32ExtendedKey::try_from(base58_to_bytes(priv_str).unwrap().as_slice())
             .unwrap();
     assert_eq!(
-        bytes_to_base58(&deserialized_priv_key.ext_pub().serialize()),
+        bytes_to_base58(&deserialized_priv_key.ext_pub().encode(MainnetP2PKHFormatter)),
         pub_str.to_owned()
     );
 }
@@ -143,7 +145,7 @@ fn test_deserialization_serialization_1() {
 fn test_bad_checksum_deserialization_1() {
     let pub_str = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsf\
                    TFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnx";
-    bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(pub_str).unwrap().as_slice())
+    bip32::Bip32ExtendedKey::try_from(base58_to_bytes(pub_str).unwrap().as_slice())
         .expect("Should fail");
 }
 
@@ -152,16 +154,18 @@ fn test_bad_checksum_deserialization_1() {
 fn test_bad_checksum_deserialization_2() {
     let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCes\
                     nDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ8";
-    bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+    bip32::Bip32ExtendedKey::try_from(base58_to_bytes(priv_str).unwrap().as_slice())
         .expect("Should fail");
 }
 
 #[test]
 fn test_bip32_address_generation_p2wpkh() {
-    let priv_str = concat!("xprv9s21ZrQH143K36GhsnaCPaS4wbWnPpE3Dx3bd82UiedB9EtjLw3FjWLPEi7aK",
-    "pnVhBTFiFf3uWPsUwNs7KPnXrJhY1d5QJNyJb9eDWTwQ1H");
+    let priv_str = concat!(
+        "xprv9s21ZrQH143K36GhsnaCPaS4wbWnPpE3Dx3bd82UiedB9EtjLw3FjWLPEi7aK",
+        "pnVhBTFiFf3uWPsUwNs7KPnXrJhY1d5QJNyJb9eDWTwQ1H"
+    );
     let bip32_ext_key =
-        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+        bip32::Bip32ExtendedKey::try_from(base58_to_bytes(priv_str).unwrap().as_slice())
             .unwrap()
             .expand(&[0x8000_0000, 0x8000_0000])
             .unwrap();
@@ -179,7 +183,7 @@ fn test_bip32_address_generation_p2pkh() {
     let priv_str = "xprv9s21ZrQH143K4Kbiy5aZxuQiufMZwNN2L9Txo8apuYEDm1LPMGVnu3GEsMusLwX1cZuto\
                     XWfg2UXuUmKx1mtj4tj9oejzMfcdNQCLNLjq4u";
     let bip32_ext_key =
-        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+        bip32::Bip32ExtendedKey::try_from(base58_to_bytes(priv_str).unwrap().as_slice())
             .unwrap()
             .expand(&[0x8000_0000])
             .unwrap();
@@ -208,7 +212,7 @@ fn test_bip32_address_generation_p2pkh() {
     );
 
     let bip32_ext_key =
-        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+        bip32::Bip32ExtendedKey::try_from(base58_to_bytes(priv_str).unwrap().as_slice())
             .unwrap()
             .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
             .unwrap();
