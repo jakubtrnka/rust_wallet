@@ -2,14 +2,32 @@
 /// https://github.com/sipa/bech32/blob/4ec94646bebb3ee8932cb251ad80d98822872e87/ref/rust/src/bech32.rs
 use super::{CodingError, Result};
 
+/// convert Byte array into base32 array
+fn bytes_to_32(bytes: &[u8]) -> Vec<u8> {
+    let mut base32 = Vec::new();
+    let mut carry: u32 = 0;
+    let mut offset_processed: u32 = 0;
+
+    for b in bytes {
+        carry <<= 8;
+        offset_processed += 8;
+        carry |= *b as u32;
+        while offset_processed >= 5 {
+            offset_processed -= 5;
+            base32.push((carry >> offset_processed & 0x1f_u32) as u8);
+        }
+    }
+    base32
+}
+
 /// Grouping structure for the human-readable part and the data part
 /// of decoded Bech32 string.
 #[derive(PartialEq, Debug, Clone)]
 pub struct Bech32 {
     /// Human-readable part
-    pub hrp: String,
+    hrp: String,
     /// Data payload
-    pub data: Vec<u8>,
+    data: Vec<u8>,
 }
 
 // Human-readable part and data part separator
@@ -32,6 +50,12 @@ const CHARSET_REV: [i8; 128] = [
 ];
 
 impl Bech32 {
+    pub fn new(hrp: &str, data: &[u8]) -> Self {
+        Self {
+            hrp: hrp.into(),
+            data: bytes_to_32(data),
+        }
+    }
     /// Encode as a string
     pub fn to_string(&self) -> Result<String> {
         if self.hrp.is_empty() {
@@ -198,6 +222,16 @@ fn polymod(values: Vec<u8>) -> u32 {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_base_to_base32_convertor() {
+
+        let lhs = vec! [0b1001_1100, 0b1110_1111, 0b0011_1001, 0b1100_1110, 0b0111_0011];
+        let rhs = vec![0b10011u8, 0b10011, 0b10111, 0b10011, 0b10011, 0b10011, 0b10011, 0b10011];
+
+        let new_lhs = bytes_to_32(&lhs);
+        assert_eq!(new_lhs, rhs);
+    }
 
     #[test]
     fn test_bch_vectors() {

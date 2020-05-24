@@ -1,6 +1,7 @@
-use crate::addresses::{P2PKHAddress, Wif};
+use crate::addresses::{P2PKHAddress, Wif, P2WPKHAddress};
 use crate::bip32;
 use crate::coding::*;
+use crate::bitcoin_keys::KeyPair;
 
 const SEED: [u8; 16] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -156,7 +157,25 @@ fn test_bad_checksum_deserialization_2() {
 }
 
 #[test]
-fn test_bip32_address_generation() {
+fn test_bip32_address_generation_p2wpkh() {
+    let priv_str = concat!("xprv9s21ZrQH143K36GhsnaCPaS4wbWnPpE3Dx3bd82UiedB9EtjLw3FjWLPEi7aK",
+    "pnVhBTFiFf3uWPsUwNs7KPnXrJhY1d5QJNyJb9eDWTwQ1H");
+    let bip32_ext_key =
+        bip32::Bip32ExtendedKey::parse_from_bytes(base58_to_bytes(priv_str).unwrap().as_slice())
+            .unwrap()
+            .expand(&[0x8000_0000, 0x8000_0000])
+            .unwrap();
+    let (pub_key, priv_key) = bip32_ext_key.child_key_pair(0x8000_0000 + 59).unwrap();
+    let address = P2WPKHAddress::from_key_pair(&KeyPair::new(pub_key, priv_key));
+
+    let wif_priv = "KxZ145ySwLBaBMMWpsWdDTvbrj1TohA6HSBzXbQbzysjUnnVR57x";
+    let wif_bech32 = "bc1qqpz2hqs5q262syvjetrvmknftgykkly244js9d";
+    assert_eq!(address.address().as_str(), wif_bech32);
+    assert_eq!(address.secret(), Some(wif_priv.to_owned()));
+}
+
+#[test]
+fn test_bip32_address_generation_p2pkh() {
     let priv_str = "xprv9s21ZrQH143K4Kbiy5aZxuQiufMZwNN2L9Txo8apuYEDm1LPMGVnu3GEsMusLwX1cZuto\
                     XWfg2UXuUmKx1mtj4tj9oejzMfcdNQCLNLjq4u";
     let bip32_ext_key =

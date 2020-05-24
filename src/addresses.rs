@@ -1,17 +1,59 @@
-use crate::coding::bytes_to_base58;
+use crate::coding::{bytes_to_base58, Bech32};
 use crate::hashes::{hash160, sha256d};
 
 use super::copy_to_offset;
 
 use crate::bitcoin_keys::KeyPair;
 
-pub struct P2PKHAddress(String, Option<String>);
-
 pub trait Wif {
     fn from_key_pair(key_pair: &KeyPair) -> Self;
     fn address(&self) -> String;
     fn secret(&self) -> Option<String>;
 }
+
+pub struct P2WPKHAddress(Bech32, Option<String>);
+
+impl Wif for P2WPKHAddress {
+
+    fn from_key_pair(key_pair: &KeyPair) -> Self {
+        let mut address_data = [0_u8; 21];
+        let witness_program = hash160(&key_pair.get_public().serialize_public());
+        copy_to_offset(&mut address_data, 1, &witness_program);
+
+        let data = key_pair.get_private().map(|private_key| {
+            let mut tmp = [0_u8; 38];
+            let priv_key = private_key
+                .serialize_private()
+                .expect("BUG: private key serialization error");
+            tmp[0] = 0x80;
+            copy_to_offset(&mut tmp, 1, &priv_key);
+            tmp[33] = 11; // for compressed pub key
+            let checksum = sha256d(&tmp[0..34]);
+            copy_to_offset(&mut tmp, 34, &checksum[0..4]);
+            bytes_to_base58(&tmp)
+        });
+
+        Self(
+            Bech32::new("bc", &address_data),
+            data
+        )
+    }
+
+    fn address(&self) -> String {
+        match self.0.to_string() {
+            Ok(addr) => addr,
+            Err(e) => {
+                panic!("BUG: Bech32 address encoding failed: {:?}", e)
+            }
+        }
+    }
+
+    fn secret(&self) -> Option<String> {
+        self.1.clone()
+    }
+}
+
+pub struct P2PKHAddress(String, Option<String>);
 
 impl Wif for P2PKHAddress {
     fn from_key_pair(key_pair: &KeyPair) -> Self {
@@ -52,6 +94,12 @@ mod test {
     use super::*;
     use crate::bitcoin_keys::BitcoinKey;
 
+    // #[test]
+    // fn test_p2wpkh() {
+    //     let wif_private_key = "L3YT5g8SyEsvkHC389oKibF6HpujJuQyepSYwu2VVJX25h6Er5s2";
+    //     let bech32_address = "bc1qfu7h094mx8p5suvxqekym0qsgpvq3tatv72gv6";
+    // }
+    //
     #[test]
     fn pub_key_to_address() {
         let legacy_mainnet = P2PKHAddress::from_key_pair(
