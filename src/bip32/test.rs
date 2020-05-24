@@ -1,9 +1,8 @@
 use crate::addresses::{P2PKHAddress, P2WPKHAddress, Wif};
 use crate::bip32;
-use crate::bitcoin_keys::KeyPair;
+use crate::bip32::formatting::MainnetP2PKHFormatter;
 use crate::coding::*;
 use std::convert::{From, TryFrom};
-use crate::bip32::formatting::MainnetP2PKHFormatter;
 
 const SEED: [u8; 16] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -132,10 +131,13 @@ fn test_deserialization_serialization_1() {
     let priv_str = "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCes\
                     nDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7";
     let deserialized_priv_key =
-        bip32::Bip32ExtendedKey::try_from(base58_to_bytes(priv_str).unwrap().as_slice())
-            .unwrap();
+        bip32::Bip32ExtendedKey::try_from(base58_to_bytes(priv_str).unwrap().as_slice()).unwrap();
     assert_eq!(
-        bytes_to_base58(&deserialized_priv_key.ext_pub().encode(MainnetP2PKHFormatter)),
+        bytes_to_base58(
+            &deserialized_priv_key
+                .ext_pub()
+                .encode(MainnetP2PKHFormatter)
+        ),
         pub_str.to_owned()
     );
 }
@@ -170,7 +172,8 @@ fn test_bip32_address_generation_p2wpkh() {
             .expect("BUG: parsing extended key failed")
             .expand(&[0x8000_0000, 0x8000_0000])
             .expect("BUG: extended key expansion failed <1>");
-    let key_pair = bip32_ext_key.expand(&[0x8000_0000 + 59])
+    let key_pair = bip32_ext_key
+        .expand(&[0x8000_0000 + 59])
         .expect("BUG: extended key expansion failed <2>")
         .into();
     let address = P2WPKHAddress::from_key_pair(&key_pair);
@@ -190,7 +193,8 @@ fn test_bip32_address_generation_p2pkh() {
             .expect("BUG: parsing extended key failed <1>")
             .expand(&[0x8000_0000])
             .unwrap();
-    let key_pair = bip32_ext_key.expand(&[0])
+    let key_pair = bip32_ext_key
+        .expand(&[0])
         .expect("BUG: extended key expansion failed <1>")
         .into();
     let addr = P2PKHAddress::from_key_pair(&key_pair);
@@ -199,7 +203,8 @@ fn test_bip32_address_generation_p2pkh() {
         String::from("1JMVQY2WnKG4VRX4M7TnEBWW7uwx64v4sd"),
     );
 
-    let key_pair = bip32_ext_key.expand(&[1332])
+    let key_pair = bip32_ext_key
+        .expand(&[1332])
         .expect("BUG: extended key expansion failed <2>")
         .into();
     let addr = P2PKHAddress::from_key_pair(&key_pair);
@@ -213,7 +218,8 @@ fn test_bip32_address_generation_p2pkh() {
             .expect("BUG: parsing extended key failed <1>")
             .expand(&[0x8000_002c, 0x8000_0000, 0x8000_0001, 0])
             .expect("BUG: extended key expansion failed <3>");
-    let key_pair = bip32_ext_key.expand(&[1])
+    let key_pair = bip32_ext_key
+        .expand(&[1])
         .expect("BUG: extended key expansion failed <4>")
         .into();
     let addr = P2PKHAddress::from_key_pair(&key_pair);

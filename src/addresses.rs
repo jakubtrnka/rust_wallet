@@ -88,12 +88,13 @@ mod test {
     use super::*;
     use crate::bitcoin_keys::BitcoinKey;
 
-    // #[test]
-    // fn test_p2wpkh() {
-    //     let wif_private_key = "L3YT5g8SyEsvkHC389oKibF6HpujJuQyepSYwu2VVJX25h6Er5s2";
-    //     let bech32_address = "bc1qfu7h094mx8p5suvxqekym0qsgpvq3tatv72gv6";
-    // }
-    //
+    #[test]
+    #[ignore]
+    fn test_p2wpkh() {
+        let wif_private_key = "L3YT5g8SyEsvkHC389oKibF6HpujJuQyepSYwu2VVJX25h6Er5s2";
+        let bech32_address = "bc1qfu7h094mx8p5suvxqekym0qsgpvq3tatv72gv6";
+    }
+
     #[test]
     fn pub_key_to_address() {
         let legacy_mainnet = P2PKHAddress::from_key_pair(

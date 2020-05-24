@@ -1,4 +1,5 @@
 mod formatting;
+mod path;
 
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
@@ -16,6 +17,7 @@ pub enum BIP32Error {
     ExtendedKeyParseError(&'static str),
     KeyDerivationError(&'static str),
     Secp256k1Error(String),
+    WrongBip32Path(String),
 }
 
 impl Error for BIP32Error {}
@@ -190,11 +192,13 @@ impl Into<KeyPair> for Bip32ExtendedKey {
 }
 
 pub fn secret_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8; 82], BIP32Error> {
-    Bip32ExtendedKey::secret_from_enthropy(enthropy, path).map(|ext_key| ext_key.encode(MainnetP2PKHFormatter))
+    Bip32ExtendedKey::secret_from_enthropy(enthropy, path)
+        .map(|ext_key| ext_key.encode(MainnetP2PKHFormatter))
 }
 
 pub fn public_ext_key_from_enthropy(enthropy: &[u8], path: &[u32]) -> Result<[u8; 82], BIP32Error> {
-    Bip32ExtendedKey::public_from_enthropy(enthropy, path).map(|ext_key| ext_key.encode(MainnetP2PKHFormatter))
+    Bip32ExtendedKey::public_from_enthropy(enthropy, path)
+        .map(|ext_key| ext_key.encode(MainnetP2PKHFormatter))
 }
 
 #[cfg(test)]
